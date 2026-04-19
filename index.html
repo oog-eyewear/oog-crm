@@ -1231,6 +1231,16 @@ function parsePrice(str){
   return parseInt(String(str).replace(/[^0-9]/g,'')) || 0;
 }
 
+function formatChartTick(v){
+  if(v===0) return '0';
+  if(v >= 100000000) return (v/100000000)+'억';
+  if(v >= 10000000) return (v/10000000)+'천만';
+  if(v >= 1000000) return (v/1000000)+'백만';
+  if(v >= 100000) return (v/100000)+'십만';
+  if(v >= 10000) return (v/10000)+'만';
+  return v+'';
+}
+
 function formatPrice(n){
   return n.toLocaleString('ko-KR');
 }
@@ -1337,7 +1347,7 @@ function drawMonthlyChart(purchases){
     labels:months.map(function(m){ return m.slice(5)+'월'; }),
     datasets:[{data:vals,backgroundColor:'#FF2400',borderRadius:6}]
   },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-    scales:{y:{ticks:{callback:function(v){ return (v/10000)+'만'; }},grid:{color:'#EBEBEB'}},x:{grid:{display:false}}}}}));
+    scales:{y:{ticks:{callback:function(v){ return formatChartTick(v); }},grid:{color:'#EBEBEB'}},x:{grid:{display:false}}}}}));
 }
 
 // ── 일별 ──
@@ -1391,7 +1401,7 @@ function drawDailyChart(purchases){
     labels:days.map(function(d){ return d.slice(8)+'일'; }),
     datasets:[{data:vals,backgroundColor:'#FF2400',borderRadius:6}]
   },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-    scales:{y:{ticks:{callback:function(v){ return (v/10000)+'만'; }},grid:{color:'#EBEBEB'}},x:{grid:{display:false}}}}}));
+    scales:{y:{ticks:{callback:function(v){ return formatChartTick(v); }},grid:{color:'#EBEBEB'}},x:{grid:{display:false}}}}}));
 }
 
 // ── 연도별 ──
@@ -1438,7 +1448,7 @@ function drawYearlyChart(purchases){
     labels:years.map(function(y){ return y+'년'; }),
     datasets:[{data:vals,backgroundColor:'#FF2400',borderRadius:6}]
   },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-    scales:{y:{ticks:{callback:function(v){ return (v/10000)+'만'; }},grid:{color:'#EBEBEB'}},x:{grid:{display:false}}}}}));
+    scales:{y:{ticks:{callback:function(v){ return formatChartTick(v); }},grid:{color:'#EBEBEB'}},x:{grid:{display:false}}}}}));
 }
 
 // ── 고객 순위 ──
