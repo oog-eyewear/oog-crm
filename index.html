@@ -97,6 +97,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .alarm-filter-bar{display:flex;gap:6px;margin-bottom:12px;}
 .alarm-filter-btn{flex:1;border:0.5px solid var(--border)!important;background:#fff!important;border-radius:20px!important;padding:7px 0!important;font-size:12px!important;color:var(--text-secondary)!important;cursor:pointer!important;text-align:center!important;-webkit-appearance:none!important;outline:none!important;}
 .alarm-filter-btn.active{background:#1a1a1a!important;color:#fff!important;border-color:#1a1a1a!important;font-weight:500!important;}
+.stats-tab-bar{display:flex;gap:6px;margin-bottom:14px;}
+.stats-tab-btn{flex:1;border:0.5px solid var(--border)!important;background:#fff!important;border-radius:20px!important;padding:7px 0!important;font-size:12px!important;color:var(--text-secondary)!important;cursor:pointer!important;text-align:center!important;-webkit-appearance:none!important;outline:none!important;}
+.stats-tab-btn.active{background:#1a1a1a!important;color:#fff!important;border-color:#1a1a1a!important;font-weight:500!important;}
+.stats-summary{background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;text-align:center;}
+.stats-amount{font-size:28px;font-weight:600;color:var(--text-primary);margin:4px 0;}
+.stats-label{font-size:12px;color:var(--text-secondary);}
+.stats-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:0.5px solid #EBEBEB;}
+.stats-row:last-child{border-bottom:none;}
+.rank-num{font-size:13px;font-weight:700;color:var(--text-hint);width:24px;flex-shrink:0;}
+.rank-num.gold{color:#b8860b;}
+.rank-num.silver{color:#888;}
+.rank-num.bronze{color:#cd7f32;}
 /* 로그인 화면 */
 .login-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100svh;background:var(--bg);padding:32px var(--pad);}
 .login-card{background:#fff;border-radius:16px;padding:32px 24px;width:100%;max-width:360px;border:0.5px solid var(--border);}
@@ -139,11 +151,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
       <span class="nav-title" id="nav-title" style="display:none;"></span>
     </div>
     <div class="nav-right" id="nav-right">
+      <button class="nav-btn secondary" id="nav-stats-btn" onclick="showStatsPage()" title="매출통계" style="padding:7px 10px!important;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      </button>
       <button class="nav-btn secondary" id="nav-alarm-btn" onclick="showAlarmPage()" title="알림" style="position:relative;padding:7px 10px!important;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         <span id="alarm-badge" style="display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;background:#FF2400;border-radius:50%;border:1.5px solid #f0f0f0;"></span>
       </button>
-      <button class="nav-btn" id="nav-action-btn" style="visibility:hidden;"></button>
+      <button class="nav-btn" id="nav-action-btn" style="display:none;"></button>
     </div>
   </div>
   <div class="tab-bar" id="tab-bar" style="display:none;">
@@ -249,8 +264,8 @@ function setNav(showBack, title, rightLabel, rightAction){
   if(showBack){logo.style.display='none';titleEl.style.display='block';titleEl.textContent=title;}
   else{logo.style.display='block';titleEl.style.display='none';}
   const btn=document.getElementById('nav-action-btn');
-  if(rightLabel){btn.textContent=rightLabel;btn.style.visibility='visible';btn.onclick=rightAction;}
-  else{btn.style.visibility='hidden';btn.onclick=null;}
+  if(rightLabel){btn.textContent=rightLabel;btn.style.display='inline-flex';btn.onclick=rightAction;}
+  else{btn.style.display='none';btn.onclick=null;}
 }
 
 function goBack(){currentCustomer=null;showingDetail=false;currentTab=0;renderList();}
@@ -1203,6 +1218,288 @@ async function openDetailFromAlarm(id){
   showingDetail = true;
   document.getElementById('tab-bar').style.display='flex';
   document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',i===3));
+  renderDetail(currentCustomer);
+}
+
+// ────────────────────────────────────────
+// 매출 통계 페이지
+// ────────────────────────────────────────
+let statsTab = 'monthly'; // monthly | daily | yearly | ranking
+
+function parsePrice(str){
+  if(!str || str==='—') return 0;
+  return parseInt(String(str).replace(/[^0-9]/g,'')) || 0;
+}
+
+function formatPrice(n){
+  return n.toLocaleString('ko-KR');
+}
+
+async function showStatsPage(){
+  showingDetail=false; destroyCharts();
+  document.getElementById('tab-bar').style.display='none';
+  setNav(true,'매출 통계','',null);
+  document.getElementById('main-content').innerHTML='<div class="spinner"></div>';
+
+  // 전체 구매내역 로드
+  const res = await sb.from('purchases').select('*').order('date',{ascending:true});
+  const purchases = res.data || [];
+
+  // 고객 목록도 로드 (순위용)
+  const cuRes = await sb.from('customers').select('id,name,gender').order('name');
+  const cuMap = {};
+  (cuRes.data||[]).forEach(function(c){ cuMap[c.id]=c; });
+
+  renderStatsPage(purchases, cuMap);
+}
+
+function renderStatsPage(purchases, cuMap){
+  var html = '';
+  html += '<div class="stats-tab-bar">';
+  html += '<button class="stats-tab-btn'+(statsTab==='monthly'?' active':'')+'" onclick="setStatsTab(\'monthly\')">월별</button>';
+  html += '<button class="stats-tab-btn'+(statsTab==='daily'?' active':'')+'" onclick="setStatsTab(\'daily\')">일별</button>';
+  html += '<button class="stats-tab-btn'+(statsTab==='yearly'?' active':'')+'" onclick="setStatsTab(\'yearly\')">연도별</button>';
+  html += '<button class="stats-tab-btn'+(statsTab==='ranking'?' active':'')+'" onclick="setStatsTab(\'ranking\')">고객순위</button>';
+  html += '</div>';
+
+  if(statsTab==='monthly') html += renderMonthly(purchases);
+  else if(statsTab==='daily') html += renderDaily(purchases);
+  else if(statsTab==='yearly') html += renderYearly(purchases);
+  else html += renderRanking(purchases, cuMap);
+
+  html += '<div style="height:20px;"></div>';
+  document.getElementById('main-content').innerHTML = html;
+
+  // 차트 그리기
+  if(statsTab==='monthly') drawMonthlyChart(purchases);
+  else if(statsTab==='daily') drawDailyChart(purchases);
+  else if(statsTab==='yearly') drawYearlyChart(purchases);
+
+  // 전역 보관 (탭 전환용)
+  window._statsPurchases = purchases;
+  window._statsCuMap = cuMap;
+}
+
+function setStatsTab(t){
+  statsTab = t;
+  renderStatsPage(window._statsPurchases, window._statsCuMap);
+}
+
+// ── 월별 ──
+function renderMonthly(purchases){
+  var now = new Date();
+  var thisYear = now.getFullYear();
+  var thisMonth = now.getMonth()+1;
+
+  // 이번달 합계
+  var thisMonthTotal = purchases
+    .filter(function(p){ var d=p.date||''; return d.startsWith(thisYear+'-'+(thisMonth<10?'0':'')+thisMonth); })
+    .reduce(function(s,p){ return s+parsePrice(p.price); },0);
+
+  // 월별 집계 (최근 12개월)
+  var monthMap = {};
+  purchases.forEach(function(p){
+    if(!p.date) return;
+    var key = p.date.slice(0,7); // YYYY-MM
+    monthMap[key] = (monthMap[key]||0) + parsePrice(p.price);
+  });
+  var months = Object.keys(monthMap).sort().reverse().slice(0,12);
+
+  var html = '';
+  html += '<div class="stats-summary">';
+  html += '<div class="stats-label">이번 달 매출</div>';
+  html += '<div class="stats-amount">₩'+formatPrice(thisMonthTotal)+'</div>';
+  html += '</div>';
+  html += '<div id="stats-chart-wrap" style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;"><canvas id="statsChart" height="180"></canvas></div>';
+  html += '<div class="card">';
+  if(months.length===0){
+    html += '<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">구매 내역이 없습니다.</div>';
+  } else {
+    months.forEach(function(m){
+      html += '<div class="stats-row"><span style="font-size:13px;color:var(--text-secondary);">'+m+'</span><span style="font-size:13px;font-weight:500;">₩'+formatPrice(monthMap[m])+'</span></div>';
+    });
+  }
+  html += '</div>';
+  return html;
+}
+
+function drawMonthlyChart(purchases){
+  var el = document.getElementById('statsChart'); if(!el) return;
+  var monthMap = {};
+  purchases.forEach(function(p){
+    if(!p.date) return;
+    var key = p.date.slice(0,7);
+    monthMap[key] = (monthMap[key]||0) + parsePrice(p.price);
+  });
+  var months = Object.keys(monthMap).sort().slice(-6);
+  var vals = months.map(function(m){ return monthMap[m]; });
+  charts.push(new Chart(el,{type:'bar',data:{
+    labels:months.map(function(m){ return m.slice(5)+'월'; }),
+    datasets:[{data:vals,backgroundColor:'#FF2400',borderRadius:6}]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{y:{ticks:{callback:function(v){ return (v/10000)+'만'; }},grid:{color:'#EBEBEB'}},x:{grid:{display:false}}}}}));
+}
+
+// ── 일별 ──
+function renderDaily(purchases){
+  var now = new Date();
+  var thisYear = now.getFullYear();
+  var thisMonth = now.getMonth()+1;
+  var prefix = thisYear+'-'+(thisMonth<10?'0':'')+thisMonth;
+
+  var dayMap = {};
+  purchases.filter(function(p){ return (p.date||'').startsWith(prefix); })
+    .forEach(function(p){
+      var key = p.date.slice(0,10);
+      dayMap[key] = (dayMap[key]||0) + parsePrice(p.price);
+    });
+
+  var days = Object.keys(dayMap).sort().reverse();
+  var monthTotal = days.reduce(function(s,d){ return s+dayMap[d]; },0);
+
+  var html = '';
+  html += '<div class="stats-summary">';
+  html += '<div class="stats-label">'+thisYear+'년 '+thisMonth+'월 합계</div>';
+  html += '<div class="stats-amount">₩'+formatPrice(monthTotal)+'</div>';
+  html += '</div>';
+  html += '<div id="stats-chart-wrap" style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;"><canvas id="statsChart" height="180"></canvas></div>';
+  html += '<div class="card">';
+  if(days.length===0){
+    html += '<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">이번 달 구매 내역이 없습니다.</div>';
+  } else {
+    days.forEach(function(d){
+      html += '<div class="stats-row"><span style="font-size:13px;color:var(--text-secondary);">'+d+'</span><span style="font-size:13px;font-weight:500;">₩'+formatPrice(dayMap[d])+'</span></div>';
+    });
+  }
+  html += '</div>';
+  return html;
+}
+
+function drawDailyChart(purchases){
+  var el = document.getElementById('statsChart'); if(!el) return;
+  var now = new Date();
+  var prefix = now.getFullYear()+'-'+(now.getMonth()+1<10?'0':'')+(now.getMonth()+1);
+  var dayMap = {};
+  purchases.filter(function(p){ return (p.date||'').startsWith(prefix); })
+    .forEach(function(p){
+      var key = p.date.slice(0,10);
+      dayMap[key] = (dayMap[key]||0) + parsePrice(p.price);
+    });
+  var days = Object.keys(dayMap).sort().slice(-14);
+  var vals = days.map(function(d){ return dayMap[d]; });
+  charts.push(new Chart(el,{type:'bar',data:{
+    labels:days.map(function(d){ return d.slice(8)+'일'; }),
+    datasets:[{data:vals,backgroundColor:'#FF2400',borderRadius:6}]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{y:{ticks:{callback:function(v){ return (v/10000)+'만'; }},grid:{color:'#EBEBEB'}},x:{grid:{display:false}}}}}));
+}
+
+// ── 연도별 ──
+function renderYearly(purchases){
+  var yearMap = {};
+  purchases.forEach(function(p){
+    if(!p.date) return;
+    var key = p.date.slice(0,4);
+    yearMap[key] = (yearMap[key]||0) + parsePrice(p.price);
+  });
+  var years = Object.keys(yearMap).sort().reverse();
+  var thisYear = new Date().getFullYear();
+  var thisYearTotal = yearMap[String(thisYear)] || 0;
+
+  var html = '';
+  html += '<div class="stats-summary">';
+  html += '<div class="stats-label">'+thisYear+'년 연간 매출</div>';
+  html += '<div class="stats-amount">₩'+formatPrice(thisYearTotal)+'</div>';
+  html += '</div>';
+  html += '<div id="stats-chart-wrap" style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;"><canvas id="statsChart" height="180"></canvas></div>';
+  html += '<div class="card">';
+  if(years.length===0){
+    html += '<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">구매 내역이 없습니다.</div>';
+  } else {
+    years.forEach(function(y){
+      html += '<div class="stats-row"><span style="font-size:13px;color:var(--text-secondary);">'+y+'년</span><span style="font-size:13px;font-weight:500;">₩'+formatPrice(yearMap[y])+'</span></div>';
+    });
+  }
+  html += '</div>';
+  return html;
+}
+
+function drawYearlyChart(purchases){
+  var el = document.getElementById('statsChart'); if(!el) return;
+  var yearMap = {};
+  purchases.forEach(function(p){
+    if(!p.date) return;
+    var key = p.date.slice(0,4);
+    yearMap[key] = (yearMap[key]||0) + parsePrice(p.price);
+  });
+  var years = Object.keys(yearMap).sort();
+  var vals = years.map(function(y){ return yearMap[y]; });
+  charts.push(new Chart(el,{type:'bar',data:{
+    labels:years.map(function(y){ return y+'년'; }),
+    datasets:[{data:vals,backgroundColor:'#FF2400',borderRadius:6}]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{y:{ticks:{callback:function(v){ return (v/10000)+'만'; }},grid:{color:'#EBEBEB'}},x:{grid:{display:false}}}}}));
+}
+
+// ── 고객 순위 ──
+function renderRanking(purchases, cuMap){
+  // 고객별 합산
+  var cuTotal = {};
+  purchases.forEach(function(p){
+    if(!p.customer_id) return;
+    cuTotal[p.customer_id] = (cuTotal[p.customer_id]||0) + parsePrice(p.price);
+  });
+
+  // 정렬
+  var ranked = Object.keys(cuTotal).map(function(id){
+    return {id:id, total:cuTotal[id], cu:cuMap[id]||null};
+  }).sort(function(a,b){ return b.total-a.total; });
+
+  var grandTotal = ranked.reduce(function(s,r){ return s+r.total; },0);
+
+  var html = '';
+  html += '<div class="stats-summary">';
+  html += '<div class="stats-label">전체 누적 매출</div>';
+  html += '<div class="stats-amount">₩'+formatPrice(grandTotal)+'</div>';
+  html += '<div class="stats-label" style="margin-top:4px;">총 '+ranked.length+'명 고객</div>';
+  html += '</div>';
+
+  html += '<div class="card">';
+  if(ranked.length===0){
+    html += '<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">구매 내역이 없습니다.</div>';
+  } else {
+    ranked.forEach(function(r, i){
+      var name = r.cu ? r.cu.name : '(알 수 없음)';
+      var gender = r.cu ? r.cu.gender : '';
+      var rankClass = i===0?'gold':i===1?'silver':i===2?'bronze':'';
+      var rankLabel = i===0?'🥇':i===1?'🥈':i===2?'🥉':(i+1)+'';
+      html += '<div class="stats-row" onclick="'+( r.cu ? 'openDetailFromStats(\''+r.id+'\')' : '')+'" style="cursor:'+(r.cu?'pointer':'default')+';">';
+      html += '<span class="rank-num '+rankClass+'">'+rankLabel+'</span>';
+      html += '<div style="flex:1;min-width:0;margin-left:10px;">';
+      html += '<div style="font-size:14px;font-weight:500;color:var(--text-primary);">'+name+'</div>';
+      html += '<div style="font-size:11px;color:var(--text-hint);">구매 '+purchases.filter(function(p){return p.customer_id===r.id;}).length+'건</div>';
+      html += '</div>';
+      html += '<span style="font-size:14px;font-weight:600;color:var(--text-primary);">₩'+formatPrice(r.total)+'</span>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+  return html;
+}
+
+async function openDetailFromStats(id){
+  var res = await sb.from('customers').select('*');
+  if(res.data) customers = res.data;
+  currentCustomer = customers.find(function(c){ return c.id===id; });
+  if(!currentCustomer) return;
+  var r1 = await sb.from('exams').select('*').eq('customer_id',id).order('date',{ascending:true});
+  var r2 = await sb.from('purchases').select('*').eq('customer_id',id).order('date',{ascending:true});
+  currentCustomer.exams = r1.data||[];
+  currentCustomer.purchases = r2.data||[];
+  currentTab = 0;
+  showingDetail = true;
+  document.getElementById('tab-bar').style.display='flex';
+  document.querySelectorAll('.tab').forEach(function(el,i){ el.classList.toggle('active',i===0); });
   renderDetail(currentCustomer);
 }
 
