@@ -731,7 +731,7 @@ async function showPurchaseForm(){
       </div>
       <div class="form-grid">
         <div class="form-row"><div class="form-label">컬러/옵션</div>
-          <select class="form-input" id="p-frame-option"><option value="">—</option></select></div>
+          <select class="form-input" id="p-frame-option" onchange="onFrameOptionChange()"><option value="">—</option></select></div>
         <div class="form-row"><div class="form-label">프레임 금액</div>
           <input class="form-input" placeholder="0" id="p-frame-price" oninput="calcTotal()" type="number" min="0"></div>
       </div>
@@ -750,7 +750,7 @@ async function showPurchaseForm(){
       </div>
       <div class="form-grid">
         <div class="form-row"><div class="form-label">굴절률</div>
-          <select class="form-input" id="p-lens-option"><option value="">—</option></select></div>
+          <select class="form-input" id="p-lens-option" onchange="onLensOptionChange()"><option value="">—</option></select></div>
         <div class="form-row"><div class="form-label">렌즈 금액</div>
           <input class="form-input" placeholder="0" id="p-lens-price" oninput="calcTotal()" type="number" min="0"></div>
       </div>
@@ -803,8 +803,25 @@ function onFrameNameChange(){
   const name=document.getElementById('p-frame-name').value;
   const optEl=document.getElementById('p-frame-option');
   if(!name){optEl.innerHTML='<option value="">—</option>';return;}
-  const opts=products.filter(p=>p.category==='frame'&&p.brand===brand&&p.name===name).map(p=>p.option).filter(Boolean);
+  const matched=products.filter(p=>p.category==='frame'&&p.brand===brand&&p.name===name);
+  const opts=matched.map(p=>p.option).filter(Boolean);
   optEl.innerHTML='<option value="">—</option>'+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
+  // 옵션 없는 단일상품이면 바로 금액 자동입력
+  if(!opts.length&&matched.length&&matched[0].price){
+    const priceEl=document.getElementById('p-frame-price');
+    if(priceEl){priceEl.value=matched[0].price;calcTotal();}
+  }
+}
+function onFrameOptionChange(){
+  const brand=document.getElementById('p-frame-brand').value;
+  const name=document.getElementById('p-frame-name').value;
+  const opt=document.getElementById('p-frame-option').value;
+  if(!opt)return;
+  const matched=products.find(p=>p.category==='frame'&&p.brand===brand&&p.name===name&&p.option===opt);
+  if(matched&&matched.price){
+    const priceEl=document.getElementById('p-frame-price');
+    if(priceEl){priceEl.value=matched.price;calcTotal();}
+  }
 }
 function onLensBrandChange(){
   const brand=document.getElementById('p-lens-brand').value;
@@ -822,8 +839,25 @@ function onLensNameChange(){
   const name=document.getElementById('p-lens-name').value;
   const optEl=document.getElementById('p-lens-option');
   if(!name){optEl.innerHTML='<option value="">—</option>';return;}
-  const opts=products.filter(p=>p.category==='lens'&&p.brand===brand&&p.name===name).map(p=>p.option).filter(Boolean);
+  const matched=products.filter(p=>p.category==='lens'&&p.brand===brand&&p.name===name);
+  const opts=matched.map(p=>p.option).filter(Boolean);
   optEl.innerHTML='<option value="">—</option>'+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
+  // 옵션 없는 단일상품이면 바로 금액 자동입력
+  if(!opts.length&&matched.length&&matched[0].price){
+    const priceEl=document.getElementById('p-lens-price');
+    if(priceEl){priceEl.value=matched[0].price;calcTotal();}
+  }
+}
+function onLensOptionChange(){
+  const brand=document.getElementById('p-lens-brand').value;
+  const name=document.getElementById('p-lens-name').value;
+  const opt=document.getElementById('p-lens-option').value;
+  if(!opt)return;
+  const matched=products.find(p=>p.category==='lens'&&p.brand===brand&&p.name===name&&p.option===opt);
+  if(matched&&matched.price){
+    const priceEl=document.getElementById('p-lens-price');
+    if(priceEl){priceEl.value=matched.price;calcTotal();}
+  }
 }
 
 function setPayMethod(m){
@@ -1116,39 +1150,129 @@ async function loadProductList(){
   if(!products.length){el.innerHTML='<div style="font-size:13px;color:var(--text-hint);padding:4px 0;">등록된 상품이 없습니다.</div>';return;}
   const frames=products.filter(p=>p.category==='frame');
   const lenses=products.filter(p=>p.category==='lens');
+
+  // 브랜드별로 그룹핑해서 접기/펼치기 UI
+  function buildGroupHtml(list, cat){
+    const brands=[...new Set(list.map(p=>p.brand))];
+    return brands.map(brand=>{
+      const items=list.filter(p=>p.brand===brand);
+      const gid='pg-'+cat+'-'+brand.replace(/[^a-z0-9]/gi,'_');
+      return `
+        <div style="border:0.5px solid #EBEBEB;border-radius:8px;margin-bottom:6px;overflow:hidden;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#F9F9F9;cursor:pointer;" onclick="toggleProductGroup('${gid}')">
+            <span style="font-size:13px;font-weight:500;color:var(--text-primary);">${brand}</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:11px;color:var(--text-hint);">${items.length}개</span>
+              <svg id="${gid}-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none" style="transition:transform 0.2s;transform:rotate(0deg);"><path d="M2 4l4 4 4-4" stroke="#9b9b9b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+          <div id="${gid}" style="display:none;">
+            ${items.map(p=>`
+            <div class="admin-row" style="padding:8px 12px;" id="prod-row-${p.id}">
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:500;color:var(--text-primary);">${p.name}${p.option?' <span style="color:var(--text-hint);font-weight:400;">/ '+p.option+'</span>':''}</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${p.price?'₩'+formatPrice(p.price):'금액 미설정'}</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-shrink:0;">
+                <button class="edit-btn" onclick="showEditProductForm('${p.id}')">수정</button>
+                <button class="edit-btn" style="color:#FF2400;border-color:#FF2400;" onclick="deleteProduct('${p.id}')">삭제</button>
+              </div>
+            </div>
+            <div id="prod-edit-${p.id}" style="display:none;padding:12px;background:#FFF8F8;border-top:0.5px solid #EBEBEB;"></div>
+            `).join('')}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
   let html='';
   if(frames.length){
-    html+='<div style="font-size:11px;font-weight:600;color:var(--text-hint);letter-spacing:0.06em;margin-bottom:6px;">프레임</div>';
-    html+=frames.map(p=>`<div class="admin-row"><div><div class="admin-name">${p.brand} ${p.name}${p.option?' / '+p.option:''}</div></div><button class="edit-btn" style="color:#FF2400;" onclick="deleteProduct('${p.id}')">삭제</button></div>`).join('');
+    html+=`<div style="font-size:11px;font-weight:600;color:var(--text-hint);letter-spacing:0.06em;margin-bottom:8px;">프레임 (${frames.length}개)</div>`;
+    html+=buildGroupHtml(frames,'frame');
   }
   if(lenses.length){
-    html+='<div style="font-size:11px;font-weight:600;color:var(--text-hint);letter-spacing:0.06em;margin:10px 0 6px;">렌즈</div>';
-    html+=lenses.map(p=>`<div class="admin-row"><div><div class="admin-name">${p.brand} ${p.name}${p.option?' / '+p.option:''}</div></div><button class="edit-btn" style="color:#FF2400;" onclick="deleteProduct('${p.id}')">삭제</button></div>`).join('');
+    html+=`<div style="font-size:11px;font-weight:600;color:var(--text-hint);letter-spacing:0.06em;margin:${frames.length?'14px':0} 0 8px;">렌즈 (${lenses.length}개)</div>`;
+    html+=buildGroupHtml(lenses,'lens');
   }
   el.innerHTML=html;
 }
+
+function toggleProductGroup(gid){
+  const el=document.getElementById(gid);
+  const arrow=document.getElementById(gid+'-arrow');
+  if(!el)return;
+  const open=el.style.display==='none';
+  el.style.display=open?'block':'none';
+  if(arrow)arrow.style.transform=open?'rotate(180deg)':'rotate(0deg)';
+}
+
+function showEditProductForm(id){
+  const p=products.find(x=>x.id===id);if(!p)return;
+  const area=document.getElementById('prod-edit-'+id);if(!area)return;
+  if(area.style.display==='block'){area.style.display='none';return;}
+  const cat=p.category;
+  area.innerHTML=`
+    <div style="font-size:12px;font-weight:500;color:#FF2400;margin-bottom:10px;">수정</div>
+    <div class="form-grid" style="gap:8px;margin-bottom:8px;">
+      <div><div class="form-label">브랜드</div><input class="form-input" id="pe-brand-${id}" value="${p.brand||''}"></div>
+      <div><div class="form-label">상품명</div><input class="form-input" id="pe-name-${id}" value="${p.name||''}"></div>
+      <div><div class="form-label">${cat==='frame'?'컬러':'굴절률'}</div><input class="form-input" id="pe-option-${id}" value="${p.option||''}"></div>
+      <div><div class="form-label">금액 (원)</div><input class="form-input" type="number" id="pe-price-${id}" value="${p.price||0}" min="0"></div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="action-btn primary" onclick="saveProductEdit('${id}')" style="margin-bottom:0;flex:1;">저장</button>
+      <button class="action-btn" onclick="document.getElementById('prod-edit-${id}').style.display='none'" style="margin-bottom:0;flex:1;">취소</button>
+    </div>
+    <div id="pe-msg-${id}" style="font-size:12px;margin-top:6px;color:#FF2400;"></div>`;
+  area.style.display='block';
+}
+
+async function saveProductEdit(id){
+  const brand=document.getElementById('pe-brand-'+id)?.value.trim();
+  const name=document.getElementById('pe-name-'+id)?.value.trim();
+  const option=document.getElementById('pe-option-'+id)?.value.trim()||null;
+  const price=parseInt(document.getElementById('pe-price-'+id)?.value||0)||0;
+  const msg=document.getElementById('pe-msg-'+id);
+  if(!brand||!name){if(msg)msg.textContent='브랜드와 상품명을 입력해주세요.';return;}
+  const {error}=await sb.from('products').update({brand,name,option,price}).eq('id',id);
+  if(error){if(msg)msg.textContent='오류: '+error.message;return;}
+  products=[];loadProductList();
+}
+
 function showAddProductForm(cat){
   const area=document.getElementById('add-product-area');if(!area)return;
+  // 같은 카테고리 폼이 열려있으면 닫기
+  if(area.dataset.cat===cat&&area.innerHTML){area.innerHTML='';area.dataset.cat='';return;}
+  area.dataset.cat=cat;
   area.innerHTML=`
     <div class="card" style="border:0.5px solid #FF2400;margin-bottom:12px;">
-      <div style="font-size:13px;font-weight:500;color:#FF2400;margin-bottom:12px;">${cat==='frame'?'프레임':'렌즈'} 상품 추가</div>
-      <div class="form-row"><div class="form-label">브랜드</div><input class="form-input" id="prod-brand" placeholder="예) Kaneko Optical"></div>
-      <div class="form-row"><div class="form-label">상품명</div><input class="form-input" id="prod-name" placeholder="예) KJ-189"></div>
-      <div class="form-row"><div class="form-label">${cat==='frame'?'컬러':'굴절률'}</div><input class="form-input" id="prod-option" placeholder="${cat==='frame'?'예) Matt Black':'예) 1.67'}"></div>
-      <button class="action-btn primary" onclick="saveProduct('${cat}')" style="margin-top:8px;margin-bottom:0;">저장</button>
+      <div style="font-size:13px;font-weight:500;color:#FF2400;margin-bottom:12px;">+ ${cat==='frame'?'프레임':'렌즈'} 상품 추가</div>
+      <div class="form-grid" style="gap:8px;margin-bottom:8px;">
+        <div><div class="form-label">브랜드</div><input class="form-input" id="prod-brand" placeholder="예) Kaneko Optical"></div>
+        <div><div class="form-label">상품명</div><input class="form-input" id="prod-name" placeholder="예) KJ-189"></div>
+        <div><div class="form-label">${cat==='frame'?'컬러':'굴절률'}</div><input class="form-input" id="prod-option" placeholder="${cat==='frame'?'예) Matt Black':'예) 1.67'}"></div>
+        <div><div class="form-label">금액 (원)</div><input class="form-input" type="number" id="prod-price" placeholder="0" min="0"></div>
+      </div>
+      <button class="action-btn primary" onclick="saveProduct('${cat}')" style="margin-top:4px;margin-bottom:0;">저장</button>
       <div id="prod-msg" style="font-size:12px;margin-top:8px;color:#FF2400;"></div>
     </div>`;
 }
+
 async function saveProduct(cat){
   const brand=document.getElementById('prod-brand')?.value.trim();
   const name=document.getElementById('prod-name')?.value.trim();
   const option=document.getElementById('prod-option')?.value.trim()||null;
+  const price=parseInt(document.getElementById('prod-price')?.value||0)||0;
   const msg=document.getElementById('prod-msg');
   if(!brand||!name){if(msg)msg.textContent='브랜드와 상품명을 입력해주세요.';return;}
-  const {error}=await sb.from('products').insert({category:cat,brand,name,option});
+  const {error}=await sb.from('products').insert({category:cat,brand,name,option,price});
   if(error){if(msg)msg.textContent='오류: '+error.message;return;}
-  products=[];document.getElementById('add-product-area').innerHTML='';loadProductList();
+  products=[];
+  const area=document.getElementById('add-product-area');
+  if(area){area.innerHTML='';area.dataset.cat='';}
+  loadProductList();
 }
+
 async function deleteProduct(id){
   if(!confirm('이 상품을 삭제할까요?'))return;
   await sb.from('products').delete().eq('id',id);
