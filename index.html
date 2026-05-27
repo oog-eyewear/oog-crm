@@ -1309,6 +1309,14 @@ function showSettingsPage(){
     <button class="action-btn" onclick="showAddProductForm('frame')">+ 프레임 상품 추가</button>
     <button class="action-btn" onclick="showAddProductForm('lens')">+ 렌즈 상품 추가</button>
     <div id="add-product-area"></div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <button class="action-btn" onclick="downloadProductTemplate()" style="flex:1;text-align:center;">📋 엑셀 템플릿 다운로드</button>
+      <label class="action-btn" style="flex:1;text-align:center;cursor:pointer;margin-bottom:0;">
+        📤 엑셀로 상품 일괄 등록
+        <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importProducts(event)">
+      </label>
+    </div>
+    <div id="product-import-msg" style="font-size:12px;margin-bottom:8px;"></div>
     <div class="section-label">직원 계정 관리</div>
     <div class="card" style="margin-bottom:12px;"><div id="staff-list"><div class="spinner"></div></div></div>
     <button class="action-btn" onclick="showAddStaffForm()">+ 직원 계정 추가</button>
@@ -1466,6 +1474,92 @@ async function deleteProduct(id){
   if(!confirm('이 상품을 삭제할까요?'))return;
   await sb.from('products').delete().eq('id',id);
   products=[];loadProductList();
+}
+
+function downloadProductTemplate(){
+  const wb=XLSX.utils.book_new();
+  // 안내 시트
+  const guideData=[
+    {A:'[작성 안내]'},
+    {A:'category 컬럼: frame(프레임) 또는 lens(렌즈) 중 하나를 입력하세요.'},
+    {A:'brand 컬럼: 브랜드명을 입력하세요. (예: Kaneko Optical)'},
+    {A:'name 컬럼: 상품명을 입력하세요. (예: KJ-189)'},
+    {A:'option 컬럼: 컬러(프레임) 또는 굴절률(렌즈)을 입력하세요. 없으면 비워두세요.'},
+    {A:'price 컬럼: 판매 금액(숫자만)을 입력하세요. (예: 350000)'},
+  ];
+  const guideWs=XLSX.utils.json_to_sheet(guideData,{header:['A'],skipHeader:true});
+  guideWs['!cols']=[{wch:70}];
+  XLSX.utils.book_append_sheet(wb,guideWs,'작성안내');
+
+  // 상품목록 시트 (헤더 + 예시 데이터)
+  const sampleData=[
+    {category:'frame',brand:'Kaneko Optical',name:'KJ-189',option:'Matt Black',price:350000},
+    {category:'frame',brand:'Kaneko Optical',name:'KJ-189',option:'Antique Gold',price:350000},
+    {category:'frame',brand:'Kaneko Optical',name:'KJ-210',option:'Dark Brown',price:420000},
+    {category:'lens',brand:'Hoya',name:'Hilux 1.60',option:'1.60',price:180000},
+    {category:'lens',brand:'Hoya',name:'Hilux 1.67',option:'1.67',price:220000},
+    {category:'lens',brand:'Seiko',name:'Super SV',option:'1.74',price:280000},
+  ];
+  const ws=XLSX.utils.json_to_sheet(sampleData);
+  ws['!cols']=[{wch:10},{wch:20},{wch:20},{wch:16},{wch:10}];
+  XLSX.utils.book_append_sheet(wb,ws,'상품목록');
+
+  XLSX.writeFile(wb,'OOG_상품목록_템플릿.xlsx');
+}
+
+async function importProducts(event){
+  const file=event.target.files[0];if(!file)return;
+  const msgEl=document.getElementById('product-import-msg');
+  if(msgEl){msgEl.style.color='#6b6b6b';msgEl.textContent='파일 읽는 중...';}
+  const reader=new FileReader();
+  reader.onload=async(e)=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'binary'});
+      const ws=wb.Sheets['상품목록'];
+      if(!ws){
+        if(msgEl){msgEl.style.color='#FF2400';msgEl.textContent='오류: "상품목록" 시트를 찾을 수 없습니다.';}
+        return;
+      }
+      const rows=XLSX.utils.sheet_to_json(ws);
+      if(!rows.length){
+        if(msgEl){msgEl.style.color='#FF2400';msgEl.textContent='오류: 데이터가 없습니다.';}
+        return;
+      }
+      // 유효성 검사
+      const valid=rows.filter(r=>{
+        const cat=String(r.category||'').trim().toLowerCase();
+        return (cat==='frame'||cat==='lens'||cat==='etc')&&String(r.name||'').trim();
+      });
+      const invalid=rows.length-valid.length;
+      if(!valid.length){
+        if(msgEl){msgEl.style.color='#FF2400';msgEl.textContent='오류: 유효한 상품이 없습니다. category는 frame/lens 중 하나여야 합니다.';}
+        return;
+      }
+      const confirmMsg=`${valid.length}개 상품을 등록할까요?${invalid>0?' ('+invalid+'개 오류 행은 건너뜁니다.)':''}`;
+      if(!confirm(confirmMsg))return;
+      if(msgEl){msgEl.style.color='#6b6b6b';msgEl.textContent='등록 중...';}
+      const toInsert=valid.map(r=>({
+        category:String(r.category).trim().toLowerCase(),
+        brand:String(r.brand||'').trim()||null,
+        name:String(r.name).trim(),
+        option:String(r.option||'').trim()||null,
+        price:parseInt(r.price)||0
+      }));
+      const {error}=await sb.from('products').insert(toInsert);
+      if(error){
+        if(msgEl){msgEl.style.color='#FF2400';msgEl.textContent='오류: '+error.message;}
+        return;
+      }
+      products=[];
+      if(msgEl){msgEl.style.color='#2d5a1b';msgEl.textContent='✓ '+toInsert.length+'개 상품이 등록되었습니다!';}
+      loadProductList();
+      // 파일 입력 초기화 (같은 파일 재업로드 가능하게)
+      event.target.value='';
+    }catch(err){
+      if(msgEl){msgEl.style.color='#FF2400';msgEl.textContent='파일 읽기 실패: '+err.message;}
+    }
+  };
+  reader.readAsBinaryString(file);
 }
 
 async function loadStaffList(){
