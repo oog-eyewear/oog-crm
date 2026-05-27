@@ -702,6 +702,7 @@ function renderPurchaseTab(cu){
           <span style="margin-left:auto;background:#F5F5F5;padding:2px 8px;border-radius:99px;">${payLabel}</span>
         </div>
         ${p.lens?`<div style="margin-top:6px;font-size:11px;color:var(--text-hint);">처방: ${p.lens}</div>`:''}
+        ${p.memo?`<div style="margin-top:6px;font-size:12px;color:var(--text-secondary);background:#F9F9F9;border-radius:6px;padding:6px 8px;line-height:1.5;">📝 ${p.memo}</div>`:''}`
       </div>
       <div id="purchase-edit-area-${realIdx}"></div>`;
     }).join('')
@@ -716,13 +717,14 @@ async function showPurchaseForm(){
   await loadProducts();
   const frameBrands=[...new Set(products.filter(p=>p.category==='frame').map(p=>p.brand))];
   const lensBrands=[...new Set(products.filter(p=>p.category==='lens').map(p=>p.brand))];
-  const etcProducts=products.filter(p=>p.category==='etc');
   currentPayMethod='card';
   area.innerHTML=`
     <div class="card" style="margin-bottom:16px;">
       <div style="font-size:14px;font-weight:500;color:#1a1a1a;margin-bottom:14px;">새 구매 내역</div>
       <div class="form-row"><div class="form-label">구매일</div><input class="form-input" type="date" value="${today}" id="p-date"></div>
-      <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 10px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">프레임</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 10px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">
+        <span style="font-size:13px;font-weight:600;color:#1a1a1a;">프레임 A</span>
+      </div>
       <div class="form-grid">
         <div class="form-row"><div class="form-label">브랜드</div>
           <select class="form-input" id="p-frame-brand" onchange="onFrameBrandChange()">
@@ -735,11 +737,40 @@ async function showPurchaseForm(){
       <div class="form-grid">
         <div class="form-row"><div class="form-label">컬러/옵션</div>
           <select class="form-input" id="p-frame-option" onchange="onFrameOptionChange()"><option value="">—</option></select></div>
-        <div class="form-row"><div class="form-label">프레임 금액</div>
+        <div class="form-row"><div class="form-label">프레임 A 금액</div>
           <input class="form-input" placeholder="0" id="p-frame-price" oninput="calcTotal()" type="number" min="0"></div>
       </div>
       <div class="form-row" id="p-frame-custom-row" style="display:none;">
         <div class="form-label">직접 입력</div><input class="form-input" placeholder="브랜드 상품명 컬러" id="p-frame-custom">
+      </div>
+      <div style="margin:10px 0 6px;">
+        <button type="button" id="p-frame2-toggle" onclick="toggleFrame2()" style="display:flex;align-items:center;gap:6px;background:none;border:0.5px dashed #D0D0D0;border-radius:8px;padding:8px 14px;font-size:13px;color:var(--text-secondary);cursor:pointer;width:100%;">
+          <span style="font-size:16px;line-height:1;">+</span> 안경테 추가 (2번째)
+        </button>
+      </div>
+      <div id="p-frame2-section" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 10px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">
+          <span style="font-size:13px;font-weight:600;color:#1a1a1a;">프레임 B</span>
+          <button type="button" onclick="toggleFrame2()" style="background:none;border:none;font-size:18px;color:var(--text-hint);cursor:pointer;line-height:1;">×</button>
+        </div>
+        <div class="form-grid">
+          <div class="form-row"><div class="form-label">브랜드</div>
+            <select class="form-input" id="p-frame2-brand" onchange="onFrame2BrandChange()">
+              <option value="">직접입력</option>
+              ${frameBrands.map(b=>`<option value="${b}">${b}</option>`).join('')}
+            </select></div>
+          <div class="form-row"><div class="form-label">상품명</div>
+            <select class="form-input" id="p-frame2-name" onchange="onFrame2NameChange()"><option value="">—</option></select></div>
+        </div>
+        <div class="form-grid">
+          <div class="form-row"><div class="form-label">컬러/옵션</div>
+            <select class="form-input" id="p-frame2-option" onchange="onFrame2OptionChange()"><option value="">—</option></select></div>
+          <div class="form-row"><div class="form-label">프레임 B 금액</div>
+            <input class="form-input" placeholder="0" id="p-frame2-price" oninput="calcTotal()" type="number" min="0"></div>
+        </div>
+        <div class="form-row" id="p-frame2-custom-row" style="display:none;">
+          <div class="form-label">직접 입력</div><input class="form-input" placeholder="브랜드 상품명 컬러" id="p-frame2-custom">
+        </div>
       </div>
       <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 10px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">렌즈</div>
       <div class="form-grid">
@@ -760,19 +791,35 @@ async function showPurchaseForm(){
       <div class="form-row" id="p-lens-custom-row" style="display:none;">
         <div class="form-label">직접 입력</div><input class="form-input" placeholder="브랜드 상품명 굴절률" id="p-lens-custom">
       </div>
-      <div class="form-row"><div class="form-label">렌즈 처방</div><input class="form-input" placeholder="OD: -2.00 / OS: -2.25" id="p-lens-rx"></div>
-      <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 10px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">기타 상품</div>
-      ${etcProducts.length?`
-      <div class="form-grid">
-        <div class="form-row"><div class="form-label">상품 선택</div>
-          <select class="form-input" id="p-etc-product" onchange="onEtcProductChange()">
-            <option value="">없음</option>
-            ${etcProducts.map(p=>`<option value="${p.id}">${p.brand?p.brand+' ':''} ${p.name}${p.option?' ('+p.option+')':''}</option>`).join('')}
-          </select></div>
-        <div class="form-row"><div class="form-label">금액 (원)</div>
-          <input class="form-input" placeholder="0" id="p-etc-price" oninput="calcTotal()" type="number" min="0"></div>
-      </div>`:'<div style="font-size:12px;color:var(--text-hint);margin-bottom:8px;">설정에서 기타 상품을 먼저 등록해주세요.</div>'}
-      <div class="form-row"><div class="form-label">직접 입력</div><input class="form-input" placeholder="세정제, 케이스 등 직접 입력" id="p-etc-custom"></div>
+      <div class="form-row"><div class="form-label">렌즈 처방 (텍스트)</div><input class="form-input" placeholder="OD: -2.00 / OS: -2.25" id="p-lens-rx"></div>
+      <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 6px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">처방 도수</div>
+      <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr 1fr 1fr;gap:6px;margin-bottom:4px;align-items:center;">
+        <div></div>
+        <div style="font-size:10px;color:var(--text-secondary);text-align:center;">S (구면)</div>
+        <div style="font-size:10px;color:var(--text-secondary);text-align:center;">C (원주)</div>
+        <div style="font-size:10px;color:var(--text-secondary);text-align:center;">AX (축)</div>
+        <div style="font-size:10px;color:var(--text-secondary);text-align:center;">ADD</div>
+        <div style="font-size:10px;color:var(--text-secondary);text-align:center;">PD</div>
+      </div>
+      <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px;align-items:center;">
+        <div style="font-size:12px;font-weight:500;color:#6b6b6b;text-align:center;">우안</div>
+        <input class="form-input" placeholder="-2.00" id="p-re-sph" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="-0.50" id="p-re-cyl" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="180" id="p-re-ax" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="+1.50" id="p-add" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="62" id="p-pd" style="padding:8px 4px;font-size:12px;text-align:center;">
+      </div>
+      <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr 1fr 1fr;gap:6px;margin-bottom:10px;align-items:center;">
+        <div style="font-size:12px;font-weight:500;color:#6b6b6b;text-align:center;">좌안</div>
+        <input class="form-input" placeholder="-2.25" id="p-le-sph" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="-0.75" id="p-le-cyl" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="175" id="p-le-ax" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="+1.50" id="p-add2" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="62" id="p-pd2" style="padding:8px 4px;font-size:12px;text-align:center;">
+      </div>
+      <div style="font-size:11px;color:var(--text-hint);margin-bottom:4px;">💡 도수를 입력하면 검안기록에도 자동 저장됩니다.</div>
+      <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 10px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">비고</div>
+      <textarea class="form-input" id="p-memo" placeholder="고객 특성, 선호도, 특이사항 등 자유롭게 기록하세요..." rows="3" style="resize:vertical;line-height:1.6;"></textarea>
       <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 10px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">할인</div>
       <div class="discount-row">
         <div class="form-row"><div class="form-label">항목</div>
@@ -875,12 +922,59 @@ function onLensOptionChange(){
   }
 }
 
-function onEtcProductChange(){
-  const id=document.getElementById('p-etc-product')?.value;
-  if(!id)return;
-  const matched=products.find(p=>p.id===id);
+// 구매 수정폼에서 같은 날짜 검안기록 값 가져오기
+function getPurchaseExamVal(p, field){
+  if(!currentCustomer||!currentCustomer.exams)return'';
+  const exam=currentCustomer.exams.find(e=>e.date===p.date);
+  return exam?exam[field]||'':'';
+}
+function toggleFrame2(){
+  const sec=document.getElementById('p-frame2-section');
+  const btn=document.getElementById('p-frame2-toggle');
+  if(!sec)return;
+  const opening=sec.style.display==='none';
+  sec.style.display=opening?'block':'none';
+  if(btn)btn.style.display=opening?'none':'flex';
+  if(!opening){
+    // 닫을 때 frame2 값 초기화 + 합계 재계산
+    ['p-frame2-brand','p-frame2-name','p-frame2-option'].forEach(id=>{
+      const el=document.getElementById(id);if(el)el.value='';
+    });
+    const p=document.getElementById('p-frame2-price');if(p){p.value='';calcTotal();}
+  }
+}
+function onFrame2BrandChange(){
+  const brand=document.getElementById('p-frame2-brand').value;
+  const nameEl=document.getElementById('p-frame2-name');
+  const optEl=document.getElementById('p-frame2-option');
+  const cr=document.getElementById('p-frame2-custom-row');
+  if(!brand){nameEl.innerHTML='<option value="">—</option>';optEl.innerHTML='<option value="">—</option>';cr.style.display='block';return;}
+  cr.style.display='none';
+  const names=[...new Set(products.filter(p=>p.category==='frame'&&p.brand===brand).map(p=>p.name))];
+  nameEl.innerHTML='<option value="">선택</option>'+names.map(n=>`<option value="${n}">${n}</option>`).join('');
+  optEl.innerHTML='<option value="">—</option>';
+}
+function onFrame2NameChange(){
+  const brand=document.getElementById('p-frame2-brand').value;
+  const name=document.getElementById('p-frame2-name').value;
+  const optEl=document.getElementById('p-frame2-option');
+  if(!name){optEl.innerHTML='<option value="">—</option>';return;}
+  const matched=products.filter(p=>p.category==='frame'&&p.brand===brand&&p.name===name);
+  const opts=matched.map(p=>p.option).filter(Boolean);
+  optEl.innerHTML='<option value="">—</option>'+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
+  if(!opts.length&&matched.length&&matched[0].price){
+    const priceEl=document.getElementById('p-frame2-price');
+    if(priceEl){priceEl.value=matched[0].price;calcTotal();}
+  }
+}
+function onFrame2OptionChange(){
+  const brand=document.getElementById('p-frame2-brand').value;
+  const name=document.getElementById('p-frame2-name').value;
+  const opt=document.getElementById('p-frame2-option').value;
+  if(!opt)return;
+  const matched=products.find(p=>p.category==='frame'&&p.brand===brand&&p.name===name&&p.option===opt);
   if(matched&&matched.price){
-    const priceEl=document.getElementById('p-etc-price');
+    const priceEl=document.getElementById('p-frame2-price');
     if(priceEl){priceEl.value=matched.price;calcTotal();}
   }
 }
@@ -894,9 +988,9 @@ function setPayMethod(m){
 
 function calcTotal(){
   const fp=parseInt(document.getElementById('p-frame-price')?.value||0)||0;
+  const fp2=parseInt(document.getElementById('p-frame2-price')?.value||0)||0;
   const lp=parseInt(document.getElementById('p-lens-price')?.value||0)||0;
-  const ep=parseInt(document.getElementById('p-etc-price')?.value||0)||0;
-  const sub=fp+lp+ep;
+  const sub=fp+fp2+lp;
   const dt=document.getElementById('p-disc-target')?.value||'';
   const dtp=document.getElementById('p-disc-type')?.value||'percent';
   const dv=parseInt(document.getElementById('p-disc-value')?.value||0)||0;
@@ -915,37 +1009,51 @@ async function savePurchase(){
   const purchaseDate=g('p-date')||new Date().toISOString().split('T')[0];
   const fp=parseInt(g('p-frame-price')||0)||0;
   const lp=parseInt(g('p-lens-price')||0)||0;
-  const sub=fp+lp;
+  const f2brand=g('p-frame2-brand');const f2name=g('p-frame2-name');const f2opt=g('p-frame2-option');const f2custom=g('p-frame2-custom');
+  const frame2Item=f2brand?[f2brand,f2name,f2opt].filter(Boolean).join(' '):(f2custom||null);
+  const fp2=parseInt(g('p-frame2-price')||0)||0;
+  const sub=fp+fp2+lp;
   const dt=g('p-disc-target')||null;
   const dtp=document.getElementById('p-disc-type')?.value||'percent';
   const dv=parseInt(g('p-disc-value')||0)||0;
   let discAmt=0;
-  if(dt&&dv>0){const base=dt==='frame'?fp:dt==='lens'?lp:sub;discAmt=dtp==='percent'?Math.round(base*dv/100):dv;}
+  if(dt&&dv>0){const base=dt==='frame'?fp+fp2:dt==='lens'?lp:sub;discAmt=dtp==='percent'?Math.round(base*dv/100):dv;}
   const finalPrice=Math.max(0,sub-discAmt);
   const fbrand=g('p-frame-brand');const fname=g('p-frame-name');const fopt=g('p-frame-option');const fcustom=g('p-frame-custom');
   const frameItem=fbrand?[fbrand,fname,fopt].filter(Boolean).join(' '):(fcustom||null);
   const lbrand=g('p-lens-brand');const lname=g('p-lens-name');const lopt=g('p-lens-option');const lcustom=g('p-lens-custom');
   const lensItem=lbrand?[lbrand,lname,lopt].filter(Boolean).join(' '):(lcustom||null);
-  // 기타 상품
-  const etcId=document.getElementById('p-etc-product')?.value||'';
-  const etcProd=etcId?products.find(p=>p.id===etcId):null;
-  const etcCustom=g('p-etc-custom');
-  const etcItem=etcProd?[etcProd.brand,etcProd.name,etcProd.option].filter(Boolean).join(' '):(etcCustom||null);
-  const ep=parseInt(g('p-etc-price')||0)||0;
+  const memo=g('p-memo');
   const newP={
     customer_id:cu.id,date:purchaseDate,
-    item:[frameItem,lensItem,etcItem].filter(Boolean).join(' / ')||'—',
-    frame_item:frameItem,lens_item:lensItem,
-    frame_price:fp,lens_price:lp,price:String(finalPrice),
+    item:[frameItem,frame2Item,lensItem].filter(Boolean).join(' / ')||'—',
+    frame_item:[frameItem,frame2Item].filter(Boolean).join(' / ')||null,
+    lens_item:lensItem,
+    frame_price:fp+fp2,lens_price:lp,price:String(finalPrice),
     discount_target:dt,discount_type:dv?dtp:null,discount_value:dv||0,
     final_price:finalPrice,payment_method:currentPayMethod,lens:g('p-lens-rx'),
-    etc_item:etcItem,etc_price:ep||null
+    memo:memo
   };
   const btn=document.querySelector('#purchase-form-area .action-btn.primary');
   if(btn){btn.disabled=true;btn.textContent='저장 중...';}
   const {data,error}=await sb.from('purchases').insert(newP).select().single();
   if(error){alert('저장 실패: '+error.message);if(btn){btn.disabled=false;btn.textContent='저장';}return;}
   cu.purchases.push(data);cu.purchases.sort((a,b)=>a.date.localeCompare(b.date));
+  // 처방도수 입력 시 검안기록에도 자동 저장
+  const pReSph=applyMinus(g('p-re-sph'));const pReCyl=applyCyl(g('p-re-cyl'));const pReAx=g('p-re-ax');
+  const pLeSph=applyMinus(g('p-le-sph'));const pLeCyl=applyCyl(g('p-le-cyl'));const pLeAx=g('p-le-ax');
+  const pAdd=applyPlus(g('p-add')||g('p-add2'));const pPd=g('p-pd')||g('p-pd2');
+  if(pReSph||pLeSph||pReCyl||pLeCyl){
+    const existing=cu.exams.find(e=>e.date===purchaseDate);
+    const examData={customer_id:cu.id,date:purchaseDate,re_sph:pReSph,re_cyl:pReCyl,re_ax:pReAx,le_sph:pLeSph,le_cyl:pLeCyl,le_ax:pLeAx,add_power:pAdd,pd:pPd};
+    if(existing){
+      await sb.from('exams').update(examData).eq('id',existing.id);
+      Object.assign(existing,examData);
+    }else{
+      const {data:newExam}=await sb.from('exams').insert(examData).select().single();
+      if(newExam){cu.exams.push(newExam);cu.exams.sort((a,b)=>a.date.localeCompare(b.date));}
+    }
+  }
   await updateVisitCount(cu);renderPurchaseTab(cu);
 }
 
@@ -957,7 +1065,7 @@ function showPurchaseEditForm(idx){
     <div class="card" style="margin-bottom:4px;border:0.5px solid #FF2400;">
       <div style="font-size:13px;font-weight:500;color:#FF2400;margin-bottom:12px;">구매내역 수정</div>
       <div class="form-row"><div class="form-label">구매일</div><input class="form-input" type="date" value="${p.date}" id="pe-date-${idx}"></div>
-      <div class="form-row"><div class="form-label">프레임 품목</div><input class="form-input" value="${p.frame_item||p.item||''}" id="pe-frame-item-${idx}"></div>
+      <div class="form-row"><div class="form-label">프레임 품목 <span style="font-size:10px;color:var(--text-hint);">(2개면 / 로 구분)</span></div><input class="form-input" value="${p.frame_item||p.item||''}" id="pe-frame-item-${idx}"></div>
       <div class="form-row"><div class="form-label">렌즈 품목</div><input class="form-input" value="${p.lens_item||''}" id="pe-lens-item-${idx}"></div>
       <div class="form-grid">
         <div class="form-row"><div class="form-label">프레임 금액</div><input class="form-input" type="number" value="${p.frame_price||0}" id="pe-fp-${idx}" oninput="calcEditTotal(${idx})"></div>
@@ -989,7 +1097,34 @@ function showPurchaseEditForm(idx){
         <button class="pay-btn ${p.payment_method==='cash'?'active':''}" onclick="setPePayMethod(${idx},'cash')">현금</button>
         <button class="pay-btn ${p.payment_method==='mixed'?'active':''}" onclick="setPePayMethod(${idx},'mixed')">카드+현금</button>
       </div>
-      <div class="form-row" style="margin-top:12px;"><div class="form-label">렌즈 처방</div><input class="form-input" value="${p.lens||''}" id="pe-lens-${idx}"></div>
+      <div class="form-row" style="margin-top:12px;"><div class="form-label">렌즈 처방 (텍스트)</div><input class="form-input" value="${p.lens||''}" id="pe-lens-${idx}" placeholder="OD: -2.00 / OS: -2.25"></div>
+      <div class="form-row"><div class="form-label">비고</div><textarea class="form-input" id="pe-memo-${idx}" rows="2" style="resize:vertical;line-height:1.6;" placeholder="고객 특성, 선호도, 특이사항...">${p.memo||''}</textarea></div>
+      <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 6px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">처방 도수</div>
+      <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr 1fr 1fr;gap:6px;margin-bottom:4px;align-items:center;">
+        <div></div>
+        <div style="font-size:10px;color:var(--text-secondary);text-align:center;">S (구면)</div>
+        <div style="font-size:10px;color:var(--text-secondary);text-align:center;">C (원주)</div>
+        <div style="font-size:10px;color:var(--text-secondary);text-align:center;">AX (축)</div>
+        <div style="font-size:10px;color:var(--text-secondary);text-align:center;">ADD</div>
+        <div style="font-size:10px;color:var(--text-secondary);text-align:center;">PD</div>
+      </div>
+      <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px;align-items:center;">
+        <div style="font-size:12px;font-weight:500;color:#6b6b6b;text-align:center;">우안</div>
+        <input class="form-input" placeholder="-2.00" id="pe-re-sph-${idx}" value="${getPurchaseExamVal(p,'re_sph')}" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="-0.50" id="pe-re-cyl-${idx}" value="${getPurchaseExamVal(p,'re_cyl')}" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="180" id="pe-re-ax-${idx}" value="${getPurchaseExamVal(p,'re_ax')}" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="+1.50" id="pe-add-${idx}" value="${getPurchaseExamVal(p,'add_power')}" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="62" id="pe-pd-${idx}" value="${getPurchaseExamVal(p,'pd')}" style="padding:8px 4px;font-size:12px;text-align:center;">
+      </div>
+      <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr 1fr 1fr;gap:6px;margin-bottom:10px;align-items:center;">
+        <div style="font-size:12px;font-weight:500;color:#6b6b6b;text-align:center;">좌안</div>
+        <input class="form-input" placeholder="-2.25" id="pe-le-sph-${idx}" value="${getPurchaseExamVal(p,'le_sph')}" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="-0.75" id="pe-le-cyl-${idx}" value="${getPurchaseExamVal(p,'le_cyl')}" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="175" id="pe-le-ax-${idx}" value="${getPurchaseExamVal(p,'le_ax')}" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="+1.50" id="pe-add2-${idx}" value="${getPurchaseExamVal(p,'add_power')}" style="padding:8px 4px;font-size:12px;text-align:center;">
+        <input class="form-input" placeholder="62" id="pe-pd2-${idx}" value="${getPurchaseExamVal(p,'pd')}" style="padding:8px 4px;font-size:12px;text-align:center;">
+      </div>
+      <div style="font-size:11px;color:var(--text-hint);margin-bottom:12px;">💡 도수를 입력하면 검안기록에도 자동 저장됩니다.</div>
       <div style="display:flex;gap:8px;margin-top:8px;">
         <button class="action-btn primary" onclick="savePurchaseEdit(${idx})" style="margin-bottom:0;">저장</button>
         <button class="action-btn danger" onclick="deletePurchase(${idx})" style="margin-bottom:0;">삭제</button>
@@ -1039,7 +1174,7 @@ async function savePurchaseEdit(idx){
   const updates={
     date:g('pe-date-'+idx),frame_item:fi,lens_item:li,
     item:[fi,li].filter(Boolean).join(' / ')||'—',
-    frame_price:fp,lens_price:lp,
+    frame_price:fp,lens_price:lp,memo:g('pe-memo-'+idx),
     discount_target:dt,discount_type:dv?dtp:null,discount_value:dv,
     final_price:final,price:String(final),
     payment_method:getPePayMethod(idx),lens:g('pe-lens-'+idx)
@@ -1047,6 +1182,23 @@ async function savePurchaseEdit(idx){
   const {error}=await sb.from('purchases').update(updates).eq('id',cu.purchases[idx].id);
   if(error){alert('저장 실패: '+error.message);return;}
   Object.assign(cu.purchases[idx],updates);
+  // 처방도수 입력 시 검안기록에도 저장
+  const reSph=applyMinus(g('pe-re-sph-'+idx));const reCyl=applyCyl(g('pe-re-cyl-'+idx));const reAx=g('pe-re-ax-'+idx);
+  const leSph=applyMinus(g('pe-le-sph-'+idx));const leCyl=applyCyl(g('pe-le-cyl-'+idx));const leAx=g('pe-le-ax-'+idx);
+  const addPow=applyPlus(g('pe-add-'+idx)||g('pe-add2-'+idx));const pd=g('pe-pd-'+idx)||g('pe-pd2-'+idx);
+  if(reSph||leSph||reCyl||leCyl){
+    const examDate=updates.date;
+    const existing=cu.exams.find(e=>e.date===examDate);
+    const examData={customer_id:cu.id,date:examDate,re_sph:reSph,re_cyl:reCyl,re_ax:reAx,le_sph:leSph,le_cyl:leCyl,le_ax:leAx,add_power:addPow,pd};
+    if(existing){
+      await sb.from('exams').update(examData).eq('id',existing.id);
+      Object.assign(existing,examData);
+    }else{
+      const {data:newExam}=await sb.from('exams').insert(examData).select().single();
+      if(newExam)cu.exams.push(newExam);
+    }
+    cu.exams.sort((a,b)=>a.date.localeCompare(b.date));
+  }
   cu.purchases.sort((a,b)=>a.date.localeCompare(b.date));
   await updateVisitCount(cu);renderPurchaseTab(cu);
 }
@@ -1156,7 +1308,6 @@ function showSettingsPage(){
     <div class="card" style="margin-bottom:12px;"><div id="product-list-area"><div class="spinner"></div></div></div>
     <button class="action-btn" onclick="showAddProductForm('frame')">+ 프레임 상품 추가</button>
     <button class="action-btn" onclick="showAddProductForm('lens')">+ 렌즈 상품 추가</button>
-    <button class="action-btn" onclick="showAddProductForm('etc')">+ 기타 상품 추가</button>
     <div id="add-product-area"></div>
     <div class="section-label">직원 계정 관리</div>
     <div class="card" style="margin-bottom:12px;"><div id="staff-list"><div class="spinner"></div></div></div>
@@ -1430,8 +1581,8 @@ function renderAlarmPage(alarms){
       <button class="alarm-filter-btn${alarmFilter==='year'?' active':''}" onclick="setAlarmFilter('year')">1년 ${alarms.filter(a=>a.type==='year').length}</button>
     </div>
     ${alarms.length?'<button class="action-btn" onclick="markAllDone()" style="margin-bottom:12px;text-align:center;color:#FF2400;border-color:#FF2400;">전체 연락완료 처리</button>':''}
-    ${filtered.length?filtered.map(a=>`
-      <div class="alarm-card" id="alarm-${a.key.replace(/[^a-z0-9]/gi,'_')}">
+    ${filtered.length?filtered.map(a=>{const sk=a.key.replace(/[^a-z0-9]/gi,'_');return `
+      <div class="alarm-card" id="alarm-${sk}">
         <div class="avatar ${a.cu.gender==='female'?'female':''}" onclick="openDetailFromAlarm('${a.cu.id}')">${a.cu.name[0]}</div>
         <div style="flex:1;min-width:0;" onclick="openDetailFromAlarm('${a.cu.id}')">
           <div class="cname">${a.cu.name}</div>
@@ -1439,7 +1590,7 @@ function renderAlarmPage(alarms){
           <span class="alarm-badge ${a.type}" style="margin-top:4px;display:inline-block;">${a.label} 연락 필요</span>
         </div>
         <button class="edit-btn" onclick="markOneDone('${a.cu.id}','${a.type}','${a.cu.last_visit}','${a.key}')" style="color:#2d5a1b;border-color:#2d5a1b;white-space:nowrap;">연락완료 ✓</button>
-      </div>`).join('')
+      </div>`;}).join('')
     :`<div style="text-align:center;padding:60px 0 20px;">
         <div style="font-size:32px;margin-bottom:12px;">🎉</div>
         <div style="font-size:15px;font-weight:500;color:var(--text-primary);margin-bottom:6px;">연락할 고객이 없어요</div>
