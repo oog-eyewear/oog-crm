@@ -362,7 +362,8 @@ function renderInfoTab(cu){
       <div style="font-size:12px;color:var(--text-hint);margin-bottom:6px;">${lastP.date}</div>
       ${lastP.frame_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue">프레임</span>${lastP.frame_item}</div>`:''}
       ${lastP.lens_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag green">렌즈</span>${lastP.lens_item}</div>`:''}
-      ${!lastP.frame_item&&!lastP.lens_item?`<div style="font-size:13px;color:var(--text-primary);">${lastP.item||'—'}</div>`:''}
+      ${lastP.etc_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag amber">기타</span>${lastP.etc_item}</div>`:''}
+      ${!lastP.frame_item&&!lastP.lens_item&&!lastP.etc_item?`<div style="font-size:13px;color:var(--text-primary);">${lastP.item||'—'}</div>`:''}
       <div style="font-size:14px;font-weight:600;color:#FF2400;margin-top:6px;">₩${formatPrice(parsePrice(lastP.final_price||lastP.price))}</div>
     </div>`:'<div style="font-size:13px;color:var(--text-hint);padding:8px 0;">구매 내역이 없습니다.</div>'}
     <div class="section-label">최근 처방 도수</div>
@@ -688,8 +689,9 @@ function renderPurchaseTab(cu){
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
           <div style="flex:1;">
             ${p.frame_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item}</div>`:''}
-            ${p.lens_item?`<div style="font-size:13px;"><span class="tag green" style="margin-right:4px;">렌즈</span>${p.lens_item}</div>`:''}
-            ${!p.frame_item&&!p.lens_item?`<div style="font-size:14px;font-weight:500;">${p.item||'—'}</div>`:''}
+            ${p.lens_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag green" style="margin-right:4px;">렌즈</span>${p.lens_item}</div>`:''}
+            ${p.etc_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag amber" style="margin-right:4px;">기타</span>${p.etc_item}</div>`:''}
+            ${!p.frame_item&&!p.lens_item&&!p.etc_item?`<div style="font-size:14px;font-weight:500;">${p.item||'—'}</div>`:''}
           </div>
           <span style="font-size:15px;font-weight:600;color:#FF2400;margin-left:12px;flex-shrink:0;">₩${formatPrice(finalP)}</span>
         </div>
@@ -714,6 +716,7 @@ async function showPurchaseForm(){
   await loadProducts();
   const frameBrands=[...new Set(products.filter(p=>p.category==='frame').map(p=>p.brand))];
   const lensBrands=[...new Set(products.filter(p=>p.category==='lens').map(p=>p.brand))];
+  const etcProducts=products.filter(p=>p.category==='etc');
   currentPayMethod='card';
   area.innerHTML=`
     <div class="card" style="margin-bottom:16px;">
@@ -758,6 +761,18 @@ async function showPurchaseForm(){
         <div class="form-label">직접 입력</div><input class="form-input" placeholder="브랜드 상품명 굴절률" id="p-lens-custom">
       </div>
       <div class="form-row"><div class="form-label">렌즈 처방</div><input class="form-input" placeholder="OD: -2.00 / OS: -2.25" id="p-lens-rx"></div>
+      <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 10px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">기타 상품</div>
+      ${etcProducts.length?`
+      <div class="form-grid">
+        <div class="form-row"><div class="form-label">상품 선택</div>
+          <select class="form-input" id="p-etc-product" onchange="onEtcProductChange()">
+            <option value="">없음</option>
+            ${etcProducts.map(p=>`<option value="${p.id}">${p.brand?p.brand+' ':''} ${p.name}${p.option?' ('+p.option+')':''}</option>`).join('')}
+          </select></div>
+        <div class="form-row"><div class="form-label">금액 (원)</div>
+          <input class="form-input" placeholder="0" id="p-etc-price" oninput="calcTotal()" type="number" min="0"></div>
+      </div>`:'<div style="font-size:12px;color:var(--text-hint);margin-bottom:8px;">설정에서 기타 상품을 먼저 등록해주세요.</div>'}
+      <div class="form-row"><div class="form-label">직접 입력</div><input class="form-input" placeholder="세정제, 케이스 등 직접 입력" id="p-etc-custom"></div>
       <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 10px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">할인</div>
       <div class="discount-row">
         <div class="form-row"><div class="form-label">항목</div>
@@ -860,6 +875,15 @@ function onLensOptionChange(){
   }
 }
 
+function onEtcProductChange(){
+  const id=document.getElementById('p-etc-product')?.value;
+  if(!id)return;
+  const matched=products.find(p=>p.id===id);
+  if(matched&&matched.price){
+    const priceEl=document.getElementById('p-etc-price');
+    if(priceEl){priceEl.value=matched.price;calcTotal();}
+  }
+}
 function setPayMethod(m){
   currentPayMethod=m;
   ['card','cash','mixed'].forEach(k=>{
@@ -871,7 +895,8 @@ function setPayMethod(m){
 function calcTotal(){
   const fp=parseInt(document.getElementById('p-frame-price')?.value||0)||0;
   const lp=parseInt(document.getElementById('p-lens-price')?.value||0)||0;
-  const sub=fp+lp;
+  const ep=parseInt(document.getElementById('p-etc-price')?.value||0)||0;
+  const sub=fp+lp+ep;
   const dt=document.getElementById('p-disc-target')?.value||'';
   const dtp=document.getElementById('p-disc-type')?.value||'percent';
   const dv=parseInt(document.getElementById('p-disc-value')?.value||0)||0;
@@ -901,13 +926,20 @@ async function savePurchase(){
   const frameItem=fbrand?[fbrand,fname,fopt].filter(Boolean).join(' '):(fcustom||null);
   const lbrand=g('p-lens-brand');const lname=g('p-lens-name');const lopt=g('p-lens-option');const lcustom=g('p-lens-custom');
   const lensItem=lbrand?[lbrand,lname,lopt].filter(Boolean).join(' '):(lcustom||null);
+  // 기타 상품
+  const etcId=document.getElementById('p-etc-product')?.value||'';
+  const etcProd=etcId?products.find(p=>p.id===etcId):null;
+  const etcCustom=g('p-etc-custom');
+  const etcItem=etcProd?[etcProd.brand,etcProd.name,etcProd.option].filter(Boolean).join(' '):(etcCustom||null);
+  const ep=parseInt(g('p-etc-price')||0)||0;
   const newP={
     customer_id:cu.id,date:purchaseDate,
-    item:[frameItem,lensItem].filter(Boolean).join(' / ')||'—',
+    item:[frameItem,lensItem,etcItem].filter(Boolean).join(' / ')||'—',
     frame_item:frameItem,lens_item:lensItem,
     frame_price:fp,lens_price:lp,price:String(finalPrice),
     discount_target:dt,discount_type:dv?dtp:null,discount_value:dv||0,
-    final_price:finalPrice,payment_method:currentPayMethod,lens:g('p-lens-rx')
+    final_price:finalPrice,payment_method:currentPayMethod,lens:g('p-lens-rx'),
+    etc_item:etcItem,etc_price:ep||null
   };
   const btn=document.querySelector('#purchase-form-area .action-btn.primary');
   if(btn){btn.disabled=true;btn.textContent='저장 중...';}
@@ -1124,6 +1156,7 @@ function showSettingsPage(){
     <div class="card" style="margin-bottom:12px;"><div id="product-list-area"><div class="spinner"></div></div></div>
     <button class="action-btn" onclick="showAddProductForm('frame')">+ 프레임 상품 추가</button>
     <button class="action-btn" onclick="showAddProductForm('lens')">+ 렌즈 상품 추가</button>
+    <button class="action-btn" onclick="showAddProductForm('etc')">+ 기타 상품 추가</button>
     <div id="add-product-area"></div>
     <div class="section-label">직원 계정 관리</div>
     <div class="card" style="margin-bottom:12px;"><div id="staff-list"><div class="spinner"></div></div></div>
@@ -1150,6 +1183,7 @@ async function loadProductList(){
   if(!products.length){el.innerHTML='<div style="font-size:13px;color:var(--text-hint);padding:4px 0;">등록된 상품이 없습니다.</div>';return;}
   const frames=products.filter(p=>p.category==='frame');
   const lenses=products.filter(p=>p.category==='lens');
+  const etcs=products.filter(p=>p.category==='etc');
 
   // 브랜드별로 그룹핑해서 접기/펼치기 UI
   function buildGroupHtml(list, cat){
@@ -1193,6 +1227,10 @@ async function loadProductList(){
   if(lenses.length){
     html+=`<div style="font-size:11px;font-weight:600;color:var(--text-hint);letter-spacing:0.06em;margin:${frames.length?'14px':0} 0 8px;">렌즈 (${lenses.length}개)</div>`;
     html+=buildGroupHtml(lenses,'lens');
+  }
+  if(etcs.length){
+    html+=`<div style="font-size:11px;font-weight:600;color:var(--text-hint);letter-spacing:0.06em;margin:${(frames.length||lenses.length)?'14px':0} 0 8px;">기타 (${etcs.length}개)</div>`;
+    html+=buildGroupHtml(etcs,'etc');
   }
   el.innerHTML=html;
 }
@@ -1246,11 +1284,11 @@ function showAddProductForm(cat){
   area.dataset.cat=cat;
   area.innerHTML=`
     <div class="card" style="border:0.5px solid #FF2400;margin-bottom:12px;">
-      <div style="font-size:13px;font-weight:500;color:#FF2400;margin-bottom:12px;">+ ${cat==='frame'?'프레임':'렌즈'} 상품 추가</div>
+      <div style="font-size:13px;font-weight:500;color:#FF2400;margin-bottom:12px;">+ ${cat==='frame'?'프레임':cat==='lens'?'렌즈':'기타'} 상품 추가</div>
       <div class="form-grid" style="gap:8px;margin-bottom:8px;">
-        <div><div class="form-label">브랜드</div><input class="form-input" id="prod-brand" placeholder="예) Kaneko Optical"></div>
-        <div><div class="form-label">상품명</div><input class="form-input" id="prod-name" placeholder="예) KJ-189"></div>
-        <div><div class="form-label">${cat==='frame'?'컬러':'굴절률'}</div><input class="form-input" id="prod-option" placeholder="${cat==='frame'?'예) Matt Black':'예) 1.67'}"></div>
+        <div><div class="form-label">브랜드/제조사</div><input class="form-input" id="prod-brand" placeholder="${cat==='etc'?'예) 옵틱클리너':'예) Kaneko Optical'}"></div>
+        <div><div class="form-label">상품명</div><input class="form-input" id="prod-name" placeholder="${cat==='etc'?'예) 세정제 30ml':'예) KJ-189'}"></div>
+        <div><div class="form-label">${cat==='frame'?'컬러':cat==='lens'?'굴절률':'규격/옵션'}</div><input class="form-input" id="prod-option" placeholder="${cat==='frame'?'예) Matt Black':cat==='lens'?'예) 1.67':'예) 블루'}"></div>
         <div><div class="form-label">금액 (원)</div><input class="form-input" type="number" id="prod-price" placeholder="0" min="0"></div>
       </div>
       <button class="action-btn primary" onclick="saveProduct('${cat}')" style="margin-top:4px;margin-bottom:0;">저장</button>
