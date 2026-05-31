@@ -689,15 +689,19 @@ function renderPurchaseTab(cu){
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
           <div style="flex:1;">
             ${p.frame_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item}</div>`:''}
-            ${p.lens_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag green" style="margin-right:4px;">렌즈</span>${p.lens_item}</div>`:''}
+            ${p.frame_item_b?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item_b}</div>`:''}
+            ${p.lens_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag green" style="margin-right:4px;">렌즈${p.lens_qty_a&&p.lens_qty_a!=1?' '+p.lens_qty_a+'조':''}</span>${p.lens_item}</div>`:''}
+            ${p.lens_item_b?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag green" style="margin-right:4px;">렌즈${p.lens_qty_b&&p.lens_qty_b!=1?' '+p.lens_qty_b+'조':''}</span>${p.lens_item_b}</div>`:''}
             ${p.etc_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag amber" style="margin-right:4px;">기타</span>${p.etc_item}</div>`:''}
-            ${!p.frame_item&&!p.lens_item&&!p.etc_item?`<div style="font-size:14px;font-weight:500;">${p.item||'—'}</div>`:''}
+            ${!p.frame_item&&!p.frame_item_b&&!p.lens_item&&!p.lens_item_b&&!p.etc_item?`<div style="font-size:14px;font-weight:500;">${p.item||'—'}</div>`:''}
           </div>
           <span style="font-size:15px;font-weight:600;color:#FF2400;margin-left:12px;flex-shrink:0;">₩${formatPrice(finalP)}</span>
         </div>
         <div style="padding-top:8px;border-top:0.5px solid #EBEBEB;font-size:12px;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:8px;">
-          ${fp?`<span>프레임 ₩${formatPrice(fp)}</span>`:''}
-          ${lp?`<span>렌즈 ₩${formatPrice(lp)}</span>`:''}
+          ${fp?`<span>프레임A ₩${formatPrice(fp)}</span>`:''}
+          ${p.frame_price_b?`<span>프레임B ₩${formatPrice(parsePrice(p.frame_price_b))}</span>`:''}
+          ${lp?`<span>렌즈${p.lens_qty_a&&p.lens_qty_a!=1?' '+p.lens_qty_a+'조':''} ₩${formatPrice(lp)}</span>`:''}
+          ${p.lens_price_b?`<span>렌즈B${p.lens_qty_b&&p.lens_qty_b!=1?' '+p.lens_qty_b+'조':''} ₩${formatPrice(parsePrice(p.lens_price_b))}</span>`:''}
           ${p.discount_value?`<span style="color:#FF2400;">할인 ${p.discount_target==='frame'?'프레임':p.discount_target==='lens'?'렌즈':'전체'} ${p.discount_type==='percent'?p.discount_value+'%':'₩'+formatPrice(p.discount_value)}</span>`:''}
           <span style="margin-left:auto;background:#F5F5F5;padding:2px 8px;border-radius:99px;">${payLabel}</span>
         </div>
@@ -718,78 +722,32 @@ async function showPurchaseForm(){
   const frameBrands=[...new Set(products.filter(p=>p.category==='frame').map(p=>p.brand))];
   const lensBrands=[...new Set(products.filter(p=>p.category==='lens').map(p=>p.brand))];
   currentPayMethod='card';
+  _frameItemCount=1;_lensItemCount=1;
   area.innerHTML=`
     <div class="card" style="margin-bottom:16px;">
       <div style="font-size:14px;font-weight:500;color:#1a1a1a;margin-bottom:14px;">새 구매 내역</div>
       <div class="form-row"><div class="form-label">구매일</div><input class="form-input" type="date" value="${today}" id="p-date"></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 10px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">
-        <span style="font-size:13px;font-weight:600;color:#1a1a1a;">프레임 A</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 6px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">
+        <span style="font-size:13px;font-weight:600;color:#1a1a1a;">프레임</span>
       </div>
-      <div class="form-grid">
-        <div class="form-row"><div class="form-label">브랜드</div>
-          <select class="form-input" id="p-frame-brand" onchange="onFrameBrandChange()">
-            <option value="">직접입력</option>
-            ${frameBrands.map(b=>`<option value="${b}">${b}</option>`).join('')}
-          </select></div>
-        <div class="form-row"><div class="form-label">상품명</div>
-          <select class="form-input" id="p-frame-name" onchange="onFrameNameChange()"><option value="">—</option></select></div>
+      <div id="p-frame-items-wrap">
+        ${makeFrameItemHtml(0, frameBrands)}
       </div>
-      <div class="form-grid">
-        <div class="form-row"><div class="form-label">컬러/옵션</div>
-          <select class="form-input" id="p-frame-option" onchange="onFrameOptionChange()"><option value="">—</option></select></div>
-        <div class="form-row"><div class="form-label">프레임 A 금액</div>
-          <input class="form-input" placeholder="0" id="p-frame-price" oninput="calcTotal()" type="number" min="0"></div>
-      </div>
-      <div class="form-row" id="p-frame-custom-row" style="display:none;">
-        <div class="form-label">직접 입력</div><input class="form-input" placeholder="브랜드 상품명 컬러" id="p-frame-custom">
-      </div>
-      <div style="margin:10px 0 6px;">
-        <button type="button" id="p-frame2-toggle" onclick="toggleFrame2()" style="display:flex;align-items:center;gap:6px;background:none;border:0.5px dashed #D0D0D0;border-radius:8px;padding:8px 14px;font-size:13px;color:var(--text-secondary);cursor:pointer;width:100%;">
-          <span style="font-size:16px;line-height:1;">+</span> 안경테 추가 (2번째)
+      <div style="margin:6px 0 10px;">
+        <button type="button" onclick="addFrameItem()" style="display:flex;align-items:center;gap:6px;background:none;border:0.5px dashed #D0D0D0;border-radius:8px;padding:8px 14px;font-size:13px;color:var(--text-secondary);cursor:pointer;width:100%;">
+          <span style="font-size:16px;line-height:1;">+</span> 안경테 추가
         </button>
       </div>
-      <div id="p-frame2-section" style="display:none;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin:4px 0 10px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">
-          <span style="font-size:13px;font-weight:600;color:#1a1a1a;">프레임 B</span>
-          <button type="button" onclick="toggleFrame2()" style="background:none;border:none;font-size:18px;color:var(--text-hint);cursor:pointer;line-height:1;">×</button>
-        </div>
-        <div class="form-grid">
-          <div class="form-row"><div class="form-label">브랜드</div>
-            <select class="form-input" id="p-frame2-brand" onchange="onFrame2BrandChange()">
-              <option value="">직접입력</option>
-              ${frameBrands.map(b=>`<option value="${b}">${b}</option>`).join('')}
-            </select></div>
-          <div class="form-row"><div class="form-label">상품명</div>
-            <select class="form-input" id="p-frame2-name" onchange="onFrame2NameChange()"><option value="">—</option></select></div>
-        </div>
-        <div class="form-grid">
-          <div class="form-row"><div class="form-label">컬러/옵션</div>
-            <select class="form-input" id="p-frame2-option" onchange="onFrame2OptionChange()"><option value="">—</option></select></div>
-          <div class="form-row"><div class="form-label">프레임 B 금액</div>
-            <input class="form-input" placeholder="0" id="p-frame2-price" oninput="calcTotal()" type="number" min="0"></div>
-        </div>
-        <div class="form-row" id="p-frame2-custom-row" style="display:none;">
-          <div class="form-label">직접 입력</div><input class="form-input" placeholder="브랜드 상품명 컬러" id="p-frame2-custom">
-        </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 6px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">
+        <span style="font-size:13px;font-weight:600;color:#1a1a1a;">렌즈</span>
       </div>
-      <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 10px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">렌즈</div>
-      <div class="form-grid">
-        <div class="form-row"><div class="form-label">브랜드</div>
-          <select class="form-input" id="p-lens-brand" onchange="onLensBrandChange()">
-            <option value="">직접입력</option>
-            ${lensBrands.map(b=>`<option value="${b}">${b}</option>`).join('')}
-          </select></div>
-        <div class="form-row"><div class="form-label">상품명</div>
-          <select class="form-input" id="p-lens-name" onchange="onLensNameChange()"><option value="">—</option></select></div>
+      <div id="p-lens-items-wrap">
+        ${makeLensItemHtml(0, lensBrands)}
       </div>
-      <div class="form-grid">
-        <div class="form-row"><div class="form-label">굴절률</div>
-          <select class="form-input" id="p-lens-option" onchange="onLensOptionChange()"><option value="">—</option></select></div>
-        <div class="form-row"><div class="form-label">렌즈 금액</div>
-          <input class="form-input" placeholder="0" id="p-lens-price" oninput="calcTotal()" type="number" min="0"></div>
-      </div>
-      <div class="form-row" id="p-lens-custom-row" style="display:none;">
-        <div class="form-label">직접 입력</div><input class="form-input" placeholder="브랜드 상품명 굴절률" id="p-lens-custom">
+      <div style="margin:6px 0 10px;">
+        <button type="button" onclick="addLensItem()" style="display:flex;align-items:center;gap:6px;background:none;border:0.5px dashed #D0D0D0;border-radius:8px;padding:8px 14px;font-size:13px;color:var(--text-secondary);cursor:pointer;width:100%;">
+          <span style="font-size:16px;line-height:1;">+</span> 렌즈 추가
+        </button>
       </div>
       <div class="form-row"><div class="form-label">렌즈 처방 (텍스트)</div><input class="form-input" placeholder="OD: -2.00 / OS: -2.25" id="p-lens-rx"></div>
       <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 6px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">처방 도수</div>
@@ -849,78 +807,142 @@ async function showPurchaseForm(){
     </div>`;
 }
 
-function onFrameBrandChange(){
-  const brand=document.getElementById('p-frame-brand').value;
-  const nameEl=document.getElementById('p-frame-name');
-  const optEl=document.getElementById('p-frame-option');
-  const cr=document.getElementById('p-frame-custom-row');
-  if(!brand){nameEl.innerHTML='<option value="">—</option>';optEl.innerHTML='<option value="">—</option>';cr.style.display='block';return;}
-  cr.style.display='none';
-  const names=[...new Set(products.filter(p=>p.category==='frame'&&p.brand===brand).map(p=>p.name))];
+// ── 동적 프레임/렌즈 아이템 생성 ──
+function makeFrameItemHtml(idx, brands){
+  const bOpts=brands.map(b=>`<option value="${b}">${b}</option>`).join('');
+  return `<div id="p-frame-item-${idx}" style="margin-bottom:10px;${idx>0?'padding-top:10px;border-top:0.5px dashed #E0E0E0;':''}">
+    ${idx>0?`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <span style="font-size:12px;font-weight:500;color:var(--text-secondary);">프레임 ${idx+1}</span>
+      <button type="button" onclick="removeFrameItem(${idx})" style="background:none;border:none;font-size:16px;color:var(--text-hint);cursor:pointer;line-height:1;">×</button>
+    </div>`:''}
+    <div class="form-grid">
+      <div class="form-row"><div class="form-label">브랜드</div>
+        <select class="form-input" id="p-fi-brand-${idx}" onchange="onFiBrandChange(${idx},'frame')">
+          <option value="">직접입력</option>${bOpts}
+        </select></div>
+      <div class="form-row"><div class="form-label">상품명</div>
+        <select class="form-input" id="p-fi-name-${idx}" onchange="onFiNameChange(${idx},'frame')"><option value="">—</option></select></div>
+    </div>
+    <div class="form-grid">
+      <div class="form-row"><div class="form-label">컬러/옵션</div>
+        <select class="form-input" id="p-fi-option-${idx}" onchange="onFiOptionChange(${idx},'frame')"><option value="">—</option></select></div>
+      <div class="form-row"><div class="form-label">금액</div>
+        <input class="form-input" placeholder="0" id="p-fi-price-${idx}" oninput="calcTotal()" type="number" min="0"></div>
+    </div>
+    <div id="p-fi-custom-row-${idx}" style="display:none;" class="form-row">
+      <div class="form-label">직접 입력</div><input class="form-input" placeholder="브랜드 상품명 컬러" id="p-fi-custom-${idx}">
+    </div>
+  </div>`;
+}
+function makeLensItemHtml(idx, brands){
+  const bOpts=brands.map(b=>`<option value="${b}">${b}</option>`).join('');
+  return `<div id="p-lens-item-${idx}" style="margin-bottom:10px;${idx>0?'padding-top:10px;border-top:0.5px dashed #E0E0E0;':''}">
+    ${idx>0?`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <span style="font-size:12px;font-weight:500;color:var(--text-secondary);">렌즈 ${idx+1}</span>
+      <button type="button" onclick="removeLensItem(${idx})" style="background:none;border:none;font-size:16px;color:var(--text-hint);cursor:pointer;line-height:1;">×</button>
+    </div>`:''}
+    <div class="form-grid">
+      <div class="form-row"><div class="form-label">브랜드</div>
+        <select class="form-input" id="p-li-brand-${idx}" onchange="onFiBrandChange(${idx},'lens')">
+          <option value="">직접입력</option>${bOpts}
+        </select></div>
+      <div class="form-row"><div class="form-label">상품명</div>
+        <select class="form-input" id="p-li-name-${idx}" onchange="onFiNameChange(${idx},'lens')"><option value="">—</option></select></div>
+    </div>
+    <div class="form-grid">
+      <div class="form-row"><div class="form-label">굴절률</div>
+        <select class="form-input" id="p-li-option-${idx}" onchange="onFiOptionChange(${idx},'lens')"><option value="">—</option></select></div>
+      <div class="form-row"><div class="form-label">금액</div>
+        <input class="form-input" placeholder="0" id="p-li-price-${idx}" oninput="calcTotal()" type="number" min="0"></div>
+    </div>
+    <div class="form-grid">
+      <div class="form-row"><div class="form-label">수량(조)</div>
+        <input class="form-input" placeholder="1" id="p-li-qty-${idx}" oninput="calcTotal()" type="number" min="0.5" step="0.5" value="1"></div>
+      <div></div>
+    </div>
+    <div id="p-li-custom-row-${idx}" style="display:none;" class="form-row">
+      <div class="form-label">직접 입력</div><input class="form-input" placeholder="브랜드 상품명 굴절률" id="p-li-custom-${idx}">
+    </div>
+  </div>`;
+}
+
+let _frameItemCount=1, _lensItemCount=1;
+function addFrameItem(){
+  const wrap=document.getElementById('p-frame-items-wrap');if(!wrap)return;
+  const brands=[...new Set(products.filter(p=>p.category==='frame').map(p=>p.brand))];
+  const div=document.createElement('div');
+  div.innerHTML=makeFrameItemHtml(_frameItemCount, brands);
+  wrap.appendChild(div.firstElementChild);
+  _frameItemCount++;
+}
+function removeFrameItem(idx){
+  const el=document.getElementById('p-frame-item-'+idx);
+  if(el){el.remove();calcTotal();}
+}
+function addLensItem(){
+  const wrap=document.getElementById('p-lens-items-wrap');if(!wrap)return;
+  const brands=[...new Set(products.filter(p=>p.category==='lens').map(p=>p.brand))];
+  const div=document.createElement('div');
+  div.innerHTML=makeLensItemHtml(_lensItemCount, brands);
+  wrap.appendChild(div.firstElementChild);
+  _lensItemCount++;
+}
+function removeLensItem(idx){
+  const el=document.getElementById('p-lens-item-'+idx);
+  if(el){el.remove();calcTotal();}
+}
+
+function getPrefixById(id){ return id.startsWith('p-fi-')?'p-fi-':'p-li-'; }
+function onFiBrandChange(idx, cat){
+  const pre=cat==='frame'?'p-fi-':'p-li-';
+  const brand=document.getElementById(pre+'brand-'+idx).value;
+  const nameEl=document.getElementById(pre+'name-'+idx);
+  const optEl=document.getElementById(pre+'option-'+idx);
+  const cr=document.getElementById(pre+'custom-row-'+idx);
+  if(!brand){nameEl.innerHTML='<option value="">—</option>';optEl.innerHTML='<option value="">—</option>';if(cr)cr.style.display='block';return;}
+  if(cr)cr.style.display='none';
+  const names=[...new Set(products.filter(p=>p.category===cat&&p.brand===brand).map(p=>p.name))];
   nameEl.innerHTML='<option value="">선택</option>'+names.map(n=>`<option value="${n}">${n}</option>`).join('');
   optEl.innerHTML='<option value="">—</option>';
 }
-function onFrameNameChange(){
-  const brand=document.getElementById('p-frame-brand').value;
-  const name=document.getElementById('p-frame-name').value;
-  const optEl=document.getElementById('p-frame-option');
+function onFiNameChange(idx, cat){
+  const pre=cat==='frame'?'p-fi-':'p-li-';
+  const brand=document.getElementById(pre+'brand-'+idx).value;
+  const name=document.getElementById(pre+'name-'+idx).value;
+  const optEl=document.getElementById(pre+'option-'+idx);
   if(!name){optEl.innerHTML='<option value="">—</option>';return;}
-  const matched=products.filter(p=>p.category==='frame'&&p.brand===brand&&p.name===name);
+  const matched=products.filter(p=>p.category===cat&&p.brand===brand&&p.name===name);
   const opts=matched.map(p=>p.option).filter(Boolean);
   optEl.innerHTML='<option value="">—</option>'+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
-  // 옵션 없는 단일상품이면 바로 금액 자동입력
   if(!opts.length&&matched.length&&matched[0].price){
-    const priceEl=document.getElementById('p-frame-price');
+    const priceEl=document.getElementById(pre+'price-'+idx);
     if(priceEl){priceEl.value=matched[0].price;calcTotal();}
   }
 }
-function onFrameOptionChange(){
-  const brand=document.getElementById('p-frame-brand').value;
-  const name=document.getElementById('p-frame-name').value;
-  const opt=document.getElementById('p-frame-option').value;
+function onFiOptionChange(idx, cat){
+  const pre=cat==='frame'?'p-fi-':'p-li-';
+  const brand=document.getElementById(pre+'brand-'+idx).value;
+  const name=document.getElementById(pre+'name-'+idx).value;
+  const opt=document.getElementById(pre+'option-'+idx).value;
   if(!opt)return;
-  const matched=products.find(p=>p.category==='frame'&&p.brand===brand&&p.name===name&&p.option===opt);
+  const matched=products.find(p=>p.category===cat&&p.brand===brand&&p.name===name&&p.option===opt);
   if(matched&&matched.price){
-    const priceEl=document.getElementById('p-frame-price');
+    const priceEl=document.getElementById(pre+'price-'+idx);
     if(priceEl){priceEl.value=matched.price;calcTotal();}
   }
 }
-function onLensBrandChange(){
-  const brand=document.getElementById('p-lens-brand').value;
-  const nameEl=document.getElementById('p-lens-name');
-  const optEl=document.getElementById('p-lens-option');
-  const cr=document.getElementById('p-lens-custom-row');
-  if(!brand){nameEl.innerHTML='<option value="">—</option>';optEl.innerHTML='<option value="">—</option>';cr.style.display='block';return;}
-  cr.style.display='none';
-  const names=[...new Set(products.filter(p=>p.category==='lens'&&p.brand===brand).map(p=>p.name))];
-  nameEl.innerHTML='<option value="">선택</option>'+names.map(n=>`<option value="${n}">${n}</option>`).join('');
-  optEl.innerHTML='<option value="">—</option>';
-}
-function onLensNameChange(){
-  const brand=document.getElementById('p-lens-brand').value;
-  const name=document.getElementById('p-lens-name').value;
-  const optEl=document.getElementById('p-lens-option');
-  if(!name){optEl.innerHTML='<option value="">—</option>';return;}
-  const matched=products.filter(p=>p.category==='lens'&&p.brand===brand&&p.name===name);
-  const opts=matched.map(p=>p.option).filter(Boolean);
-  optEl.innerHTML='<option value="">—</option>'+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
-  // 옵션 없는 단일상품이면 바로 금액 자동입력
-  if(!opts.length&&matched.length&&matched[0].price){
-    const priceEl=document.getElementById('p-lens-price');
-    if(priceEl){priceEl.value=matched[0].price;calcTotal();}
-  }
-}
-function onLensOptionChange(){
-  const brand=document.getElementById('p-lens-brand').value;
-  const name=document.getElementById('p-lens-name').value;
-  const opt=document.getElementById('p-lens-option').value;
-  if(!opt)return;
-  const matched=products.find(p=>p.category==='lens'&&p.brand===brand&&p.name===name&&p.option===opt);
-  if(matched&&matched.price){
-    const priceEl=document.getElementById('p-lens-price');
-    if(priceEl){priceEl.value=matched.price;calcTotal();}
-  }
-}
+
+// 구버전 호환 (혹시 남은 참조용)
+function onFrameBrandChange(){onFiBrandChange(0,'frame');}
+function onFrameNameChange(){onFiNameChange(0,'frame');}
+function onFrameOptionChange(){onFiOptionChange(0,'frame');}
+function onLensBrandChange(){onFiBrandChange(0,'lens');}
+function onLensNameChange(){onFiNameChange(0,'lens');}
+function onLensOptionChange(){onFiOptionChange(0,'lens');}
+function toggleFrame2(){addFrameItem();}
+function onFrame2BrandChange(){onFiBrandChange(1,'frame');}
+function onFrame2NameChange(){onFiNameChange(1,'frame');}
+function onFrame2OptionChange(){onFiOptionChange(1,'frame');}
 
 // 구매 수정폼에서 같은 날짜 검안기록 값 가져오기
 function getPurchaseExamVal(p, field){
@@ -986,11 +1008,41 @@ function setPayMethod(m){
   });
 }
 
+function getFrameItems(){
+  const items=[];
+  document.querySelectorAll('[id^="p-frame-item-"]').forEach(el=>{
+    const idx=el.id.replace('p-frame-item-','');
+    const brand=document.getElementById('p-fi-brand-'+idx)?.value||'';
+    const name=document.getElementById('p-fi-name-'+idx)?.value||'';
+    const opt=document.getElementById('p-fi-option-'+idx)?.value||'';
+    const custom=document.getElementById('p-fi-custom-'+idx)?.value||'';
+    const price=parseInt(document.getElementById('p-fi-price-'+idx)?.value||0)||0;
+    const itemName=brand?[brand,name,opt].filter(Boolean).join(' '):(custom||null);
+    if(itemName||price) items.push({name:itemName,price});
+  });
+  return items;
+}
+function getLensItems(){
+  const items=[];
+  document.querySelectorAll('[id^="p-lens-item-"]').forEach(el=>{
+    const idx=el.id.replace('p-lens-item-','');
+    const brand=document.getElementById('p-li-brand-'+idx)?.value||'';
+    const name=document.getElementById('p-li-name-'+idx)?.value||'';
+    const opt=document.getElementById('p-li-option-'+idx)?.value||'';
+    const custom=document.getElementById('p-li-custom-'+idx)?.value||'';
+    const price=parseInt(document.getElementById('p-li-price-'+idx)?.value||0)||0;
+    const qty=parseFloat(document.getElementById('p-li-qty-'+idx)?.value||1)||1;
+    const itemName=brand?[brand,name,opt].filter(Boolean).join(' '):(custom||null);
+    if(itemName||price) items.push({name:itemName,price,qty});
+  });
+  return items;
+}
 function calcTotal(){
-  const fp=parseInt(document.getElementById('p-frame-price')?.value||0)||0;
-  const fp2=parseInt(document.getElementById('p-frame2-price')?.value||0)||0;
-  const lp=parseInt(document.getElementById('p-lens-price')?.value||0)||0;
-  const sub=fp+fp2+lp;
+  const frameItems=getFrameItems();
+  const lensItems=getLensItems();
+  const fp=frameItems.reduce((s,i)=>s+i.price,0);
+  const lp=lensItems.reduce((s,i)=>s+(i.price*(i.qty||1)),0);
+  const sub=fp+lp;
   const dt=document.getElementById('p-disc-target')?.value||'';
   const dtp=document.getElementById('p-disc-type')?.value||'percent';
   const dv=parseInt(document.getElementById('p-disc-value')?.value||0)||0;
@@ -1007,29 +1059,39 @@ async function savePurchase(){
   const cu=currentCustomer;
   const g=id=>{const el=document.getElementById(id);return el?el.value.trim()||null:null;};
   const purchaseDate=g('p-date')||new Date().toISOString().split('T')[0];
-  const fp=parseInt(g('p-frame-price')||0)||0;
-  const lp=parseInt(g('p-lens-price')||0)||0;
-  const f2brand=g('p-frame2-brand');const f2name=g('p-frame2-name');const f2opt=g('p-frame2-option');const f2custom=g('p-frame2-custom');
-  const frame2Item=f2brand?[f2brand,f2name,f2opt].filter(Boolean).join(' '):(f2custom||null);
-  const fp2=parseInt(g('p-frame2-price')||0)||0;
-  const sub=fp+fp2+lp;
+  const frameItems=getFrameItems();
+  const lensItems=getLensItems();
+  const fp=frameItems.reduce((s,i)=>s+i.price,0);
+  const lp=lensItems.reduce((s,i)=>s+(i.price*(i.qty||1)),0);
+  const sub=fp+lp;
   const dt=g('p-disc-target')||null;
   const dtp=document.getElementById('p-disc-type')?.value||'percent';
   const dv=parseInt(g('p-disc-value')||0)||0;
   let discAmt=0;
-  if(dt&&dv>0){const base=dt==='frame'?fp+fp2:dt==='lens'?lp:sub;discAmt=dtp==='percent'?Math.round(base*dv/100):dv;}
+  if(dt&&dv>0){const base=dt==='frame'?fp:dt==='lens'?lp:sub;discAmt=dtp==='percent'?Math.round(base*dv/100):dv;}
   const finalPrice=Math.max(0,sub-discAmt);
-  const fbrand=g('p-frame-brand');const fname=g('p-frame-name');const fopt=g('p-frame-option');const fcustom=g('p-frame-custom');
-  const frameItem=fbrand?[fbrand,fname,fopt].filter(Boolean).join(' '):(fcustom||null);
-  const lbrand=g('p-lens-brand');const lname=g('p-lens-name');const lopt=g('p-lens-option');const lcustom=g('p-lens-custom');
-  const lensItem=lbrand?[lbrand,lname,lopt].filter(Boolean).join(' '):(lcustom||null);
   const memo=g('p-memo');
+  // 프레임: 첫번째 → frame_item, 두번째 → frame_item_b
+  const frameItem=frameItems[0]?.name||null;
+  const frame2Item=frameItems[1]?.name||null;
+  const framePrice=frameItems[0]?.price||0;
+  const frame2Price=frameItems[1]?.price||0;
+  // 렌즈: 첫번째 → lens_item, 두번째 → lens_item_b
+  const lensItem=lensItems[0]?.name||null;
+  const lens2Item=lensItems[1]?.name||null;
+  const lensPrice=lensItems[0]?.price||0;
+  const lens2Price=lensItems[1]?.price||0;
+  const lensQty=lensItems[0]?.qty||1;
+  const lensQty2=lensItems[1]?.qty||1;
   const newP={
     customer_id:cu.id,date:purchaseDate,
-    item:[frameItem,frame2Item,lensItem].filter(Boolean).join(' / ')||'—',
-    frame_item:[frameItem,frame2Item].filter(Boolean).join(' / ')||null,
-    lens_item:lensItem,
-    frame_price:fp+fp2,lens_price:lp,price:String(finalPrice),
+    item:[frameItem,frame2Item,lensItem,lens2Item].filter(Boolean).join(' / ')||'—',
+    frame_item:frameItem,frame_item_b:frame2Item||null,
+    lens_item:lensItem,lens_item_b:lens2Item||null,
+    frame_price:framePrice,frame_price_b:frame2Price||null,
+    lens_price:lensPrice,lens_price_b:lens2Price||null,
+    lens_qty_a:lensQty,lens_qty_b:lensQty2,
+    price:String(finalPrice),
     discount_target:dt,discount_type:dv?dtp:null,discount_value:dv||0,
     final_price:finalPrice,payment_method:currentPayMethod,lens:g('p-lens-rx'),
     memo:memo
@@ -1762,6 +1824,7 @@ function renderStatsPage(purchases,cuMap){
     <button class="stats-tab-btn${statsTab==='weekly'?' active':''}" onclick="setStatsTab('weekly')">주간</button>
     <button class="stats-tab-btn${statsTab==='daily'?' active':''}" onclick="setStatsTab('daily')">일별</button>
     <button class="stats-tab-btn${statsTab==='yearly'?' active':''}" onclick="setStatsTab('yearly')">연도별</button>
+    <button class="stats-tab-btn${statsTab==='period'?' active':''}" onclick="setStatsTab('period')">기간조회</button>
     <button class="stats-tab-btn${statsTab==='ranking'?' active':''}" onclick="setStatsTab('ranking')">고객순위</button>
     <button class="stats-tab-btn${statsTab==='products'?' active':''}" onclick="setStatsTab('products')">상품별</button>
   </div>`;
@@ -1770,6 +1833,7 @@ function renderStatsPage(purchases,cuMap){
   else if(statsTab==='weekly') body=renderWeekly(purchases);
   else if(statsTab==='daily') body=renderDaily(purchases);
   else if(statsTab==='yearly') body=renderYearly(purchases);
+  else if(statsTab==='period') body=renderPeriod(purchases);
   else if(statsTab==='ranking') body=renderRanking(purchases,cuMap);
   else body=renderProductStats(purchases);
   document.getElementById('main-content').innerHTML=tabBar+body+'<div style="height:20px;"></div>';
@@ -1857,6 +1921,86 @@ function drawYearlyChart(purchases){
   charts.push(new Chart(el,{type:'bar',data:{labels:years.map(y=>y+'년'),datasets:[{data:years.map(y=>map[y]),backgroundColor:'#FF2400',borderRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{ticks:{callback:v=>formatChartTick(v)},grid:{color:'#EBEBEB'}},x:{grid:{display:false}}}}}));
 }
 
+// 기간별 판매내역
+let _periodFrom='', _periodTo='';
+function renderPeriod(purchases){
+  const now=new Date();
+  const todayStr=now.toISOString().split('T')[0];
+  // 기본값: 이번 주 월요일 ~ 오늘
+  if(!_periodFrom){
+    const day=now.getDay()||7;
+    const mon=new Date(now);mon.setDate(now.getDate()-day+1);
+    _periodFrom=mon.toISOString().split('T')[0];
+    _periodTo=todayStr;
+  }
+  const from=_periodFrom, to=_periodTo;
+  const filtered=purchases.filter(p=>p.date&&p.date>=from&&p.date<=to);
+  const totalAmt=filtered.reduce((s,p)=>s+parsePrice(p.final_price||p.price),0);
+
+  // 상품별 집계
+  const frameMap={},lensMap={};
+  filtered.forEach(p=>{
+    if(p.frame_item){frameMap[p.frame_item]=frameMap[p.frame_item]||{count:0};frameMap[p.frame_item].count+=1;}
+    if(p.frame_item_b){frameMap[p.frame_item_b]=frameMap[p.frame_item_b]||{count:0};frameMap[p.frame_item_b].count+=1;}
+    if(p.lens_item){const q=parseFloat(p.lens_qty_a||1);lensMap[p.lens_item]=lensMap[p.lens_item]||{count:0};lensMap[p.lens_item].count+=q;}
+    if(p.lens_item_b){const q=parseFloat(p.lens_qty_b||1);lensMap[p.lens_item_b]=lensMap[p.lens_item_b]||{count:0};lensMap[p.lens_item_b].count+=q;}
+  });
+  const frames=Object.entries(frameMap).sort((a,b)=>b[1].count-a[1].count);
+  const lenses=Object.entries(lensMap).sort((a,b)=>b[1].count-a[1].count);
+
+  const quickBtns=[
+    {label:'오늘',from:todayStr,to:todayStr},
+    {label:'이번 주',from:(()=>{const d=new Date();const day=d.getDay()||7;d.setDate(d.getDate()-day+1);return d.toISOString().split('T')[0];})(),to:todayStr},
+    {label:'이번 달',from:todayStr.slice(0,7)+'-01',to:todayStr},
+    {label:'지난 달',from:(()=>{const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return d.toISOString().split('T')[0];})(),to:(()=>{const d=new Date();d.setDate(0);return d.toISOString().split('T')[0];})()},
+  ];
+
+  return `
+  <div class="card" style="margin-bottom:12px;">
+    <div style="font-size:13px;font-weight:500;color:#1a1a1a;margin-bottom:10px;">조회 기간</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+      ${quickBtns.map(b=>`<button onclick="setPeriod('${b.from}','${b.to}')" style="flex-shrink:0;border:0.5px solid var(--border)!important;background:#fff!important;border-radius:20px!important;padding:6px 13px!important;font-size:12px!important;color:var(--text-secondary)!important;cursor:pointer!important;-webkit-appearance:none!important;">${b.label}</button>`).join('')}
+    </div>
+    <div class="form-grid" style="gap:8px;">
+      <div><div class="form-label">시작일</div>
+        <input class="form-input" type="date" id="period-from" value="${from}" onchange="applyPeriod()"></div>
+      <div><div class="form-label">종료일</div>
+        <input class="form-input" type="date" id="period-to" value="${to}" onchange="applyPeriod()"></div>
+    </div>
+  </div>
+  <div class="stats-summary">
+    <div class="stats-label">${from} ~ ${to}</div>
+    <div class="stats-amount">₩${formatPrice(totalAmt)}</div>
+    <div class="stats-label" style="margin-top:4px;">${filtered.length}건 판매</div>
+  </div>
+  ${frames.length?`
+  <div class="section-label" style="margin-top:14px;">프레임 판매</div>
+  <div class="card">
+    ${frames.map(([name,v])=>`<div class="stats-row">
+      <div style="flex:1;font-size:13px;font-weight:500;">${name}</div>
+      <div style="font-size:13px;font-weight:600;">${v.count}개</div>
+    </div>`).join('')}
+  </div>`:''}
+  ${lenses.length?`
+  <div class="section-label">렌즈 판매</div>
+  <div class="card">
+    ${lenses.map(([name,v])=>`<div class="stats-row">
+      <div style="flex:1;font-size:13px;font-weight:500;">${name}</div>
+      <div style="font-size:13px;font-weight:600;">${v.count%1===0?v.count:v.count.toFixed(1)}조</div>
+    </div>`).join('')}
+  </div>`:''}
+  ${!frames.length&&!lenses.length?`<div style="text-align:center;padding:40px 0;color:var(--text-hint);font-size:14px;">해당 기간에 판매 내역이 없습니다.</div>`:''}`;
+}
+function setPeriod(from,to){
+  _periodFrom=from;_periodTo=to;
+  renderStatsPage(_statsData.purchases,_statsData.cuMap);
+}
+function applyPeriod(){
+  _periodFrom=document.getElementById('period-from')?.value||_periodFrom;
+  _periodTo=document.getElementById('period-to')?.value||_periodTo;
+  renderStatsPage(_statsData.purchases,_statsData.cuMap);
+}
+
 function renderRanking(purchases,cuMap){
   const cuTotal={};
   purchases.forEach(p=>{if(!p.customer_id)return;cuTotal[p.customer_id]=(cuTotal[p.customer_id]||0)+parsePrice(p.final_price||p.price);});
@@ -1881,8 +2025,14 @@ function renderRanking(purchases,cuMap){
 function renderProductStats(purchases){
   const frameMap={},lensMap={};
   purchases.forEach(p=>{
+    // 프레임 A
     if(p.frame_item){frameMap[p.frame_item]=frameMap[p.frame_item]||{count:0,revenue:0};frameMap[p.frame_item].count+=1;frameMap[p.frame_item].revenue+=parsePrice(p.frame_price||0);}
-    if(p.lens_item){const qty=p.lens_qty!=null?parseFloat(p.lens_qty):1;lensMap[p.lens_item]=lensMap[p.lens_item]||{count:0,revenue:0};lensMap[p.lens_item].count+=qty;lensMap[p.lens_item].revenue+=parsePrice(p.lens_price||0);}
+    // 프레임 B (별도 집계)
+    if(p.frame_item_b){frameMap[p.frame_item_b]=frameMap[p.frame_item_b]||{count:0,revenue:0};frameMap[p.frame_item_b].count+=1;frameMap[p.frame_item_b].revenue+=parsePrice(p.frame_price_b||0);}
+    // 렌즈 A
+    if(p.lens_item){const qty=parseFloat(p.lens_qty_a||p.lens_qty||1);lensMap[p.lens_item]=lensMap[p.lens_item]||{count:0,revenue:0};lensMap[p.lens_item].count+=qty;lensMap[p.lens_item].revenue+=parsePrice(p.lens_price||0)*qty;}
+    // 렌즈 B (별도 집계)
+    if(p.lens_item_b){const qty2=parseFloat(p.lens_qty_b||1);lensMap[p.lens_item_b]=lensMap[p.lens_item_b]||{count:0,revenue:0};lensMap[p.lens_item_b].count+=qty2;lensMap[p.lens_item_b].revenue+=parsePrice(p.lens_price_b||0)*qty2;}
   });
   const frames=Object.entries(frameMap).sort((a,b)=>b[1].count-a[1].count);
   const lenses=Object.entries(lensMap).sort((a,b)=>b[1].count-a[1].count);
