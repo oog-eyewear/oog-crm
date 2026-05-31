@@ -1493,9 +1493,54 @@ async function saveProductEdit(id){
   const price=parseInt(document.getElementById('pe-price-'+id)?.value||0)||0;
   const msg=document.getElementById('pe-msg-'+id);
   if(!brand||!name){if(msg)msg.textContent='브랜드와 상품명을 입력해주세요.';return;}
+
+  // 수정 전 상품명 조회 (구매내역 업데이트용)
+  const oldProduct=products.find(p=>p.id===id);
+  const oldItemName=oldProduct?[oldProduct.brand,oldProduct.name,oldProduct.option].filter(Boolean).join(' '):null;
+  const newItemName=[brand,name,option].filter(Boolean).join(' ');
+
   const {error}=await sb.from('products').update({brand,name,option,price}).eq('id',id);
   if(error){if(msg)msg.textContent='오류: '+error.message;return;}
+
+  // 상품명이 바뀐 경우 구매내역 업데이트 여부 확인
+  if(oldItemName&&oldItemName!==newItemName){
+    if(confirm(`상품명이 "${oldItemName}" → "${newItemName}"으로 변경됩니다.
+기존 구매내역에 등록된 "${oldItemName}"도 "${newItemName}"으로 업데이트할까요?`)){
+      if(msg){msg.style.color='#6b6b6b';msg.textContent='구매내역 업데이트 중...';}
+      await updatePurchaseItemName(oldItemName, newItemName);
+      if(msg){msg.style.color='#2d5a1b';msg.textContent='✓ 저장 및 구매내역 업데이트 완료!';}
+    }else{
+      if(msg){msg.style.color='#2d5a1b';msg.textContent='✓ 저장 완료 (기존 구매내역 유지)';}
+    }
+  }else{
+    if(msg){msg.style.color='#2d5a1b';msg.textContent='✓ 저장 완료';}
+  }
   products=[];loadProductList();
+}
+
+async function updatePurchaseItemName(oldName, newName){
+  // frame_item, frame_item_b, lens_item, lens_item_b 각각 업데이트
+  const fields=['frame_item','frame_item_b','lens_item','lens_item_b'];
+  for(const field of fields){
+    // 완전 일치하는 경우
+    await sb.from('purchases').update({[field]:newName}).eq(field, oldName);
+    // "A / B" 형태로 포함된 경우 (구버전 데이터)
+    const {data}=await sb.from('purchases').select('id,'+field).like(field, '%'+oldName+'%');
+    if(data&&data.length){
+      for(const row of data){
+        const updated=(row[field]||'').split(' / ').map(s=>s.trim()===oldName?newName:s).join(' / ');
+        await sb.from('purchases').update({[field]:updated}).eq('id',row.id);
+      }
+    }
+  }
+  // item 컬럼도 업데이트
+  const {data:itemRows}=await sb.from('purchases').select('id,item').like('item','%'+oldName+'%');
+  if(itemRows&&itemRows.length){
+    for(const row of itemRows){
+      const updated=(row.item||'').split(' / ').map(s=>s.trim()===oldName?newName:s).join(' / ');
+      await sb.from('purchases').update({item:updated}).eq('id',row.id);
+    }
+  }
 }
 
 function showAddProductForm(cat){
@@ -1836,7 +1881,11 @@ function renderStatsPage(purchases,cuMap){
   else if(statsTab==='period') body=renderPeriod(purchases);
   else if(statsTab==='ranking') body=renderRanking(purchases,cuMap);
   else body=renderProductStats(purchases);
-  document.getElementById('main-content').innerHTML=tabBar+body+'<div style="height:20px;"></div>';
+  const dlBtn=`<button onclick="downloadStatsExcel()" style="display:flex;align-items:center;gap:6px;background:#fff;border:0.5px solid var(--border);border-radius:8px;padding:8px 14px;font-size:13px;color:var(--text-secondary);cursor:pointer;margin-bottom:12px;width:100%;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    현재 화면 엑셀로 다운로드
+  </button>`;
+  document.getElementById('main-content').innerHTML=tabBar+dlBtn+body+'<div style="height:20px;"></div>';
   setTimeout(()=>{
     if(statsTab==='monthly') drawMonthlyChart(purchases);
     else if(statsTab==='weekly') drawWeeklyChart(purchases);
@@ -2042,6 +2091,80 @@ function renderProductStats(purchases){
   <div class="card">${fRows||'<div style="font-size:13px;color:var(--text-hint);padding:8px 0;">데이터 없음</div>'}</div>
   <div class="section-label">렌즈 판매 현황</div>
   <div class="card">${lRows||'<div style="font-size:13px;color:var(--text-hint);padding:8px 0;">데이터 없음</div>'}</div>`;
+}
+
+function downloadStatsExcel(){
+  const purchases=_statsData.purchases||[];
+  const cuMap=_statsData.cuMap||{};
+  let rows=[], sheetName='통계';
+
+  if(statsTab==='monthly'){
+    sheetName='월별매출';
+    const map={};purchases.forEach(p=>{if(!p.date)return;const k=p.date.slice(0,7);map[k]=(map[k]||0)+parsePrice(p.final_price||p.price);});
+    rows=Object.keys(map).sort().reverse().map(m=>({'연월':m,'매출(원)':map[m]}));
+  }else if(statsTab==='weekly'){
+    sheetName='주간매출';
+    const now=new Date();const weekMap={};
+    purchases.forEach(p=>{if(!p.date)return;const diff=Math.floor((now-new Date(p.date))/(7*24*60*60*1000));if(diff>=0&&diff<8){const lbl=diff===0?'이번 주':diff===1?'지난 주':diff+'주 전';weekMap[lbl]=(weekMap[lbl]||0)+parsePrice(p.final_price||p.price);}});
+    rows=Object.entries(weekMap).map(([k,v])=>({'기간':k,'매출(원)':v}));
+  }else if(statsTab==='daily'){
+    sheetName='일별매출';
+    const now=new Date();const prefix=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    const map={};purchases.filter(p=>(p.date||'').startsWith(prefix)).forEach(p=>{const k=p.date.slice(0,10);map[k]=(map[k]||0)+parsePrice(p.final_price||p.price);});
+    rows=Object.keys(map).sort().reverse().map(d=>({'날짜':d,'매출(원)':map[d]}));
+  }else if(statsTab==='yearly'){
+    sheetName='연도별매출';
+    const map={};purchases.forEach(p=>{if(!p.date)return;const k=p.date.slice(0,4);map[k]=(map[k]||0)+parsePrice(p.final_price||p.price);});
+    rows=Object.keys(map).sort().reverse().map(y=>({'연도':y,'매출(원)':map[y]}));
+  }else if(statsTab==='period'){
+    sheetName='기간별판매';
+    const from=_periodFrom,to=_periodTo;
+    const filtered=purchases.filter(p=>p.date&&p.date>=from&&p.date<=to);
+    // 프레임 집계
+    const frameMap={};
+    filtered.forEach(p=>{
+      if(p.frame_item){frameMap[p.frame_item]=frameMap[p.frame_item]||{count:0};frameMap[p.frame_item].count+=1;}
+      if(p.frame_item_b){frameMap[p.frame_item_b]=frameMap[p.frame_item_b]||{count:0};frameMap[p.frame_item_b].count+=1;}
+    });
+    const lensMap={};
+    filtered.forEach(p=>{
+      if(p.lens_item){const q=parseFloat(p.lens_qty_a||1);lensMap[p.lens_item]=lensMap[p.lens_item]||{count:0};lensMap[p.lens_item].count+=q;}
+      if(p.lens_item_b){const q=parseFloat(p.lens_qty_b||1);lensMap[p.lens_item_b]=lensMap[p.lens_item_b]||{count:0};lensMap[p.lens_item_b].count+=q;}
+    });
+    const frameRows=Object.entries(frameMap).sort((a,b)=>b[1].count-a[1].count).map(([name,v])=>({'구분':'프레임','상품명':name,'판매수량':v.count}));
+    const lensRows=Object.entries(lensMap).sort((a,b)=>b[1].count-a[1].count).map(([name,v])=>({'구분':'렌즈','상품명':name,'판매수량':v.count}));
+    rows=[...frameRows,...lensRows];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),sheetName);
+    // 요약 시트
+    const totalAmt=filtered.reduce((s,p)=>s+parsePrice(p.final_price||p.price),0);
+    const summary=[{'기간':from+' ~ '+to,'판매건수':filtered.length,'총매출(원)':totalAmt}];
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(summary),'요약');
+    XLSX.writeFile(wb,'OOG_기간판매_'+from+'_'+to+'.xlsx');
+    return;
+  }else if(statsTab==='ranking'){
+    sheetName='고객순위';
+    const cuTotal={};purchases.forEach(p=>{if(!p.customer_id)return;cuTotal[p.customer_id]=(cuTotal[p.customer_id]||0)+parsePrice(p.final_price||p.price);});
+    rows=Object.keys(cuTotal).map(id=>({id,total:cuTotal[id],cu:cuMap[id]||null})).sort((a,b)=>b.total-a.total)
+      .map((r,i)=>({'순위':i+1,'고객명':r.cu?r.cu.name:'알 수 없음','총구매금액(원)':r.total,'구매건수':purchases.filter(p=>p.customer_id===r.id).length}));
+  }else if(statsTab==='products'){
+    sheetName='상품별판매';
+    const frameMap={},lensMap={};
+    purchases.forEach(p=>{
+      if(p.frame_item){frameMap[p.frame_item]=frameMap[p.frame_item]||{count:0,revenue:0};frameMap[p.frame_item].count+=1;frameMap[p.frame_item].revenue+=parsePrice(p.frame_price||0);}
+      if(p.frame_item_b){frameMap[p.frame_item_b]=frameMap[p.frame_item_b]||{count:0,revenue:0};frameMap[p.frame_item_b].count+=1;frameMap[p.frame_item_b].revenue+=parsePrice(p.frame_price_b||0);}
+      if(p.lens_item){const q=parseFloat(p.lens_qty_a||1);lensMap[p.lens_item]=lensMap[p.lens_item]||{count:0,revenue:0};lensMap[p.lens_item].count+=q;lensMap[p.lens_item].revenue+=parsePrice(p.lens_price||0)*q;}
+      if(p.lens_item_b){const q=parseFloat(p.lens_qty_b||1);lensMap[p.lens_item_b]=lensMap[p.lens_item_b]||{count:0,revenue:0};lensMap[p.lens_item_b].count+=q;lensMap[p.lens_item_b].revenue+=parsePrice(p.lens_price_b||0)*q;}
+    });
+    const fRows=Object.entries(frameMap).sort((a,b)=>b[1].count-a[1].count).map(([name,v])=>({'구분':'프레임','상품명':name,'판매수량':v.count,'매출(원)':v.revenue}));
+    const lRows=Object.entries(lensMap).sort((a,b)=>b[1].count-a[1].count).map(([name,v])=>({'구분':'렌즈','상품명':name,'판매수량':v.count%1===0?v.count:v.count.toFixed(1)+'조','매출(원)':v.revenue}));
+    rows=[...fRows,...lRows];
+  }
+
+  if(!rows.length){alert('다운로드할 데이터가 없습니다.');return;}
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),sheetName);
+  XLSX.writeFile(wb,'OOG_'+sheetName+'_'+new Date().toISOString().split('T')[0]+'.xlsx');
 }
 
 async function openDetailFromStats(id){
