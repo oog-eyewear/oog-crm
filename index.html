@@ -1022,7 +1022,10 @@ function setPayMethod(m){
 
 function getFrameItems(){
   const items=[];
-  document.querySelectorAll('[id^="p-frame-item-"]').forEach(el=>{
+  const wrap=document.getElementById('p-frame-items-wrap');if(!wrap)return items;
+  // wrap의 직접 자식 중 p-frame-item-N ID를 가진 것만 처리
+  [...wrap.children].forEach(el=>{
+    if(!el.id||!el.id.startsWith('p-frame-item-'))return;
     const idx=el.id.replace('p-frame-item-','');
     const brand=document.getElementById('p-fi-brand-'+idx)?.value||'';
     const name=document.getElementById('p-fi-name-'+idx)?.value||'';
@@ -1036,7 +1039,9 @@ function getFrameItems(){
 }
 function getLensItems(){
   const items=[];
-  document.querySelectorAll('[id^="p-lens-item-"]').forEach(el=>{
+  const wrap=document.getElementById('p-lens-items-wrap');if(!wrap)return items;
+  [...wrap.children].forEach(el=>{
+    if(!el.id||!el.id.startsWith('p-lens-item-'))return;
     const idx=el.id.replace('p-lens-item-','');
     const brand=document.getElementById('p-li-brand-'+idx)?.value||'';
     const name=document.getElementById('p-li-name-'+idx)?.value||'';
