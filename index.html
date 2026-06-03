@@ -751,7 +751,6 @@ async function showPurchaseForm(forceOpen){
           <span style="font-size:16px;line-height:1;">+</span> 렌즈 추가
         </button>
       </div>
-      <div class="form-row"><div class="form-label">렌즈 처방 (텍스트)</div><input class="form-input" placeholder="OD: -2.00 / OS: -2.25" id="p-lens-rx"></div>
       <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 6px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">처방 도수</div>
       <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr 1fr 1fr;gap:6px;margin-bottom:4px;align-items:center;">
         <div></div>
@@ -1191,7 +1190,6 @@ function showPurchaseEditForm(idx){
         <button class="pay-btn ${p.payment_method==='cash'?'active':''}" onclick="setPePayMethod(${idx},'cash')">현금</button>
         <button class="pay-btn ${p.payment_method==='mixed'?'active':''}" onclick="setPePayMethod(${idx},'mixed')">카드+현금</button>
       </div>
-      <div class="form-row" style="margin-top:12px;"><div class="form-label">렌즈 처방 (텍스트)</div><input class="form-input" value="${p.lens||''}" id="pe-lens-${idx}" placeholder="OD: -2.00 / OS: -2.25"></div>
       <div class="form-row"><div class="form-label">비고</div><textarea class="form-input" id="pe-memo-${idx}" rows="2" style="resize:vertical;line-height:1.6;" placeholder="고객 특성, 선호도, 특이사항...">${p.memo||''}</textarea></div>
       <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 6px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">처방 도수</div>
       <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr 1fr 1fr;gap:6px;margin-bottom:4px;align-items:center;">
