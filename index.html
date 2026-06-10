@@ -708,7 +708,9 @@ function renderPurchaseTab(cu){
           ${p.discount_frame_value?`<span style="color:#FF2400;">프레임할인 ${p.discount_frame_type==='percent'?p.discount_frame_value+'%':'₩'+formatPrice(p.discount_frame_value)}</span>`:''}
           ${p.discount_lens_value?`<span style="color:#FF2400;">렌즈할인 ${p.discount_lens_type==='percent'?p.discount_lens_value+'%':'₩'+formatPrice(p.discount_lens_value)}</span>`:''}
           ${!p.discount_frame_value&&!p.discount_lens_value&&p.discount_value?`<span style="color:#FF2400;">할인 ₩${formatPrice(p.discount_value)}</span>`:''}
-          <span style="margin-left:auto;background:#F5F5F5;padding:2px 8px;border-radius:99px;">${payLabel}</span>
+          <span style="margin-left:auto;background:#F5F5F5;padding:2px 8px;border-radius:99px;">
+            ${payLabel}${p.payment_method==='mixed'&&(p.payment_card||p.payment_cash)?` (카드 ₩${formatPrice(p.payment_card||0)} / 현금 ₩${formatPrice(p.payment_cash||0)})`:''}
+          </span>
         </div>
         ${p.lens?`<div style="margin-top:6px;font-size:11px;color:var(--text-hint);">처방: ${p.lens}</div>`:''}
         ${p.memo?`<div style="margin-top:6px;font-size:12px;color:var(--text-secondary);background:#F9F9F9;border-radius:6px;padding:6px 8px;line-height:1.5;">📝 ${p.memo}</div>`:''}
@@ -823,6 +825,15 @@ async function showPurchaseForm(forceOpen){
         <button class="pay-btn active" id="pay-card" onclick="setPayMethod('card')">카드</button>
         <button class="pay-btn" id="pay-cash" onclick="setPayMethod('cash')">현금</button>
         <button class="pay-btn" id="pay-mixed" onclick="setPayMethod('mixed')">카드+현금</button>
+      </div>
+      <div id="p-mixed-wrap" style="display:none;margin-top:8px;">
+        <div class="form-grid" style="gap:8px;">
+          <div><div class="form-label">카드 결제액 (원)</div>
+            <input class="form-input" type="number" placeholder="0" id="p-pay-card-amt" oninput="calcMixedTotal()" min="0"></div>
+          <div><div class="form-label">현금 결제액 (원)</div>
+            <input class="form-input" type="number" placeholder="0" id="p-pay-cash-amt" oninput="calcMixedTotal()" min="0"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-hint);margin-top:4px;" id="p-mixed-check"></div>
       </div>
       <button class="action-btn primary" onclick="savePurchase()" style="margin-top:16px;">저장</button>
     </div>`;
@@ -1027,6 +1038,24 @@ function setPayMethod(m){
     const el=document.getElementById('pay-'+k);
     if(el)el.classList.toggle('active',k===m);
   });
+  const wrap=document.getElementById('p-mixed-wrap');
+  if(wrap)wrap.style.display=m==='mixed'?'block':'none';
+  if(m!=='mixed'){
+    const ca=document.getElementById('p-pay-card-amt');if(ca)ca.value='';
+    const ch=document.getElementById('p-pay-cash-amt');if(ch)ch.value='';
+  }
+}
+function calcMixedTotal(){
+  const cardAmt=parseInt(document.getElementById('p-pay-card-amt')?.value||0)||0;
+  const cashAmt=parseInt(document.getElementById('p-pay-cash-amt')?.value||0)||0;
+  const finalEl=document.getElementById('p-final');
+  const finalAmt=finalEl?parsePrice(finalEl.textContent):0;
+  const sum=cardAmt+cashAmt;
+  const checkEl=document.getElementById('p-mixed-check');
+  if(!checkEl)return;
+  if(sum===0)checkEl.textContent='';
+  else if(sum===finalAmt)checkEl.style.color='#2d5a1b',checkEl.textContent='✓ 합계 ₩'+formatPrice(sum)+' — 최종금액과 일치';
+  else checkEl.style.color='#FF2400',checkEl.textContent='⚠ 합계 ₩'+formatPrice(sum)+' — 최종금액(₩'+formatPrice(finalAmt)+')과 차이: '+formatPrice(Math.abs(finalAmt-sum))+'원';
 }
 
 function getFrameItems(){
@@ -1135,7 +1164,10 @@ async function savePurchase(){
     discount_lens_type:dlv?dltype:null,discount_lens_value:dlv||0,
     discount_lens_extra:dlextra||0,
     discount_value:totalDisc||0,
-    final_price:finalPrice,payment_method:currentPayMethod,lens:g('p-lens-rx'),
+    final_price:finalPrice,payment_method:currentPayMethod,
+    payment_card:currentPayMethod==='card'?finalPrice:currentPayMethod==='mixed'?(parseInt(g('p-pay-card-amt')||0)||0):0,
+    payment_cash:currentPayMethod==='cash'?finalPrice:currentPayMethod==='mixed'?(parseInt(g('p-pay-cash-amt')||0)||0):0,
+    lens:g('p-lens-rx'),
     memo:memo
   };
   const btn=document.querySelector('#purchase-form-area .action-btn.primary');
@@ -1214,6 +1246,14 @@ function showPurchaseEditForm(idx){
         <button class="pay-btn ${p.payment_method==='cash'?'active':''}" onclick="setPePayMethod(${idx},'cash')">현금</button>
         <button class="pay-btn ${p.payment_method==='mixed'?'active':''}" onclick="setPePayMethod(${idx},'mixed')">카드+현금</button>
       </div>
+      <div id="pe-mixed-wrap-${idx}" style="display:${p.payment_method==='mixed'?'block':'none'};margin-top:8px;">
+        <div class="form-grid" style="gap:8px;">
+          <div><div class="form-label">카드 결제액 (원)</div>
+            <input class="form-input" type="number" value="${p.payment_card||0}" id="pe-card-amt-${idx}" min="0"></div>
+          <div><div class="form-label">현금 결제액 (원)</div>
+            <input class="form-input" type="number" value="${p.payment_cash||0}" id="pe-cash-amt-${idx}" min="0"></div>
+        </div>
+      </div>
       <div class="form-row"><div class="form-label">비고</div><textarea class="form-input" id="pe-memo-${idx}" rows="2" style="resize:vertical;line-height:1.6;" placeholder="고객 특성, 선호도, 특이사항...">${p.memo||''}</textarea></div>
       <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 6px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">처방 도수</div>
       <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr 1fr 1fr;gap:6px;margin-bottom:4px;align-items:center;">
@@ -1252,6 +1292,8 @@ function setPePayMethod(idx,m){
   const c=document.getElementById('pe-pay-'+idx);if(!c)return;
   const methods=['card','cash','mixed'];
   c.querySelectorAll('.pay-btn').forEach((b,i)=>b.classList.toggle('active',methods[i]===m));
+  const wrap=document.getElementById('pe-mixed-wrap-'+idx);
+  if(wrap)wrap.style.display=m==='mixed'?'block':'none';
 }
 function getPePayMethod(idx){
   const c=document.getElementById('pe-pay-'+idx);if(!c)return'card';
@@ -1305,7 +1347,10 @@ async function savePurchaseEdit(idx){
     discount_lens_extra:dlex||0,
     discount_value:totalDisc||0,
     final_price:final,price:String(final),
-    payment_method:getPePayMethod(idx),lens:g('pe-lens-'+idx)
+    payment_method:getPePayMethod(idx),
+    payment_card:getPePayMethod(idx)==='card'?final:getPePayMethod(idx)==='mixed'?(parseInt(g('pe-card-amt-'+idx)||0)||0):0,
+    payment_cash:getPePayMethod(idx)==='cash'?final:getPePayMethod(idx)==='mixed'?(parseInt(g('pe-cash-amt-'+idx)||0)||0):0,
+    lens:g('pe-lens-'+idx)
   };
   const {error}=await sb.from('purchases').update(updates).eq('id',cu.purchases[idx].id);
   if(error){alert('저장 실패: '+error.message);return;}
@@ -1965,14 +2010,41 @@ function renderStatsPage(purchases,cuMap){
   },50);
 }
 
+function calcPaySummary(list){
+  let card=0,cash=0,mixed=0;
+  list.forEach(p=>{
+    const amt=parsePrice(p.final_price||p.price);
+    if(p.payment_method==='cash') cash+=amt;
+    else if(p.payment_method==='mixed'){
+      card+=parsePrice(p.payment_card||0);
+      cash+=parsePrice(p.payment_cash||0);
+      mixed+=amt;
+    } else card+=amt;
+  });
+  return {card,cash,mixed};
+}
+function payBadge(card,cash){
+  return `<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+    <span style="font-size:11px;background:#EEF2FF;color:#3730a3;padding:2px 8px;border-radius:99px;">카드 ₩${formatPrice(card)}</span>
+    <span style="font-size:11px;background:#F0F9F0;color:#2d5a1b;padding:2px 8px;border-radius:99px;">현금 ₩${formatPrice(cash)}</span>
+  </div>`;
+}
 function renderMonthly(purchases){
-  const map={};
-  purchases.forEach(p=>{if(!p.date)return;const k=p.date.slice(0,7);map[k]=(map[k]||0)+parsePrice(p.final_price||p.price);});
+  const map={},cardMap={},cashMap={};
+  purchases.forEach(p=>{
+    if(!p.date)return;
+    const k=p.date.slice(0,7);
+    map[k]=(map[k]||0)+parsePrice(p.final_price||p.price);
+    if(p.payment_method==='cash') cashMap[k]=(cashMap[k]||0)+parsePrice(p.final_price||p.price);
+    else if(p.payment_method==='mixed'){cardMap[k]=(cardMap[k]||0)+parsePrice(p.payment_card||0);cashMap[k]=(cashMap[k]||0)+parsePrice(p.payment_cash||0);}
+    else cardMap[k]=(cardMap[k]||0)+parsePrice(p.final_price||p.price);
+  });
   const months=Object.keys(map).sort().reverse();
   const thisMonth=new Date().toISOString().slice(0,7);
-  return `<div class="stats-summary"><div class="stats-label">이번 달 매출</div><div class="stats-amount">₩${formatPrice(map[thisMonth]||0)}</div></div>
+  const thisPay=calcPaySummary(purchases.filter(p=>(p.date||'').startsWith(thisMonth)));
+  return `<div class="stats-summary"><div class="stats-label">이번 달 매출</div><div class="stats-amount">₩${formatPrice(map[thisMonth]||0)}</div>${payBadge(thisPay.card,thisPay.cash)}</div>
   <div style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;"><canvas id="statsChart" height="180"></canvas></div>
-  <div class="card">${months.length?months.map(m=>`<div class="stats-row"><span style="font-size:13px;color:var(--text-secondary);">${m}</span><span style="font-size:13px;font-weight:500;">₩${formatPrice(map[m])}</span></div>`).join(''):'<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">구매 내역이 없습니다.</div>'}</div>`;
+  <div class="card">${months.length?months.map(m=>`<div class="stats-row" style="flex-direction:column;align-items:flex-start;gap:4px;"><div style="display:flex;justify-content:space-between;width:100%;"><span style="font-size:13px;color:var(--text-secondary);">${m}</span><span style="font-size:13px;font-weight:500;">₩${formatPrice(map[m])}</span></div><div style="display:flex;gap:6px;"><span style="font-size:11px;color:#3730a3;">카드 ₩${formatPrice(cardMap[m]||0)}</span><span style="font-size:11px;color:#2d5a1b;">현금 ₩${formatPrice(cashMap[m]||0)}</span></div></div>`).join(''):'<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">구매 내역이 없습니다.</div>'}</div>`;
 }
 function drawMonthlyChart(purchases){
   const el=document.getElementById('statsChart');if(!el)return;
@@ -2027,12 +2099,21 @@ function drawDailyChart(purchases){
 }
 
 function renderYearly(purchases){
-  const map={};purchases.forEach(p=>{if(!p.date)return;const k=p.date.slice(0,4);map[k]=(map[k]||0)+parsePrice(p.final_price||p.price);});
+  const map={},cardMap={},cashMap={};
+  purchases.forEach(p=>{
+    if(!p.date)return;
+    const k=p.date.slice(0,4);
+    map[k]=(map[k]||0)+parsePrice(p.final_price||p.price);
+    if(p.payment_method==='cash') cashMap[k]=(cashMap[k]||0)+parsePrice(p.final_price||p.price);
+    else if(p.payment_method==='mixed'){cardMap[k]=(cardMap[k]||0)+parsePrice(p.payment_card||0);cashMap[k]=(cashMap[k]||0)+parsePrice(p.payment_cash||0);}
+    else cardMap[k]=(cardMap[k]||0)+parsePrice(p.final_price||p.price);
+  });
   const years=Object.keys(map).sort().reverse();
   const thisYear=String(new Date().getFullYear());
-  return `<div class="stats-summary"><div class="stats-label">${thisYear}년 연간 매출</div><div class="stats-amount">₩${formatPrice(map[thisYear]||0)}</div></div>
+  const thisPay=calcPaySummary(purchases.filter(p=>(p.date||'').startsWith(thisYear)));
+  return `<div class="stats-summary"><div class="stats-label">${thisYear}년 연간 매출</div><div class="stats-amount">₩${formatPrice(map[thisYear]||0)}</div>${payBadge(thisPay.card,thisPay.cash)}</div>
   <div style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;"><canvas id="statsChart" height="180"></canvas></div>
-  <div class="card">${years.length?years.map(y=>`<div class="stats-row"><span style="font-size:13px;color:var(--text-secondary);">${y}년</span><span style="font-size:13px;font-weight:500;">₩${formatPrice(map[y])}</span></div>`).join(''):'<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">구매 내역이 없습니다.</div>'}</div>`;
+  <div class="card">${years.length?years.map(y=>`<div class="stats-row" style="flex-direction:column;align-items:flex-start;gap:4px;"><div style="display:flex;justify-content:space-between;width:100%;"><span style="font-size:13px;color:var(--text-secondary);">${y}년</span><span style="font-size:13px;font-weight:500;">₩${formatPrice(map[y])}</span></div><div style="display:flex;gap:6px;"><span style="font-size:11px;color:#3730a3;">카드 ₩${formatPrice(cardMap[y]||0)}</span><span style="font-size:11px;color:#2d5a1b;">현금 ₩${formatPrice(cashMap[y]||0)}</span></div></div>`).join(''):'<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">구매 내역이 없습니다.</div>'}</div>`;
 }
 function drawYearlyChart(purchases){
   const el=document.getElementById('statsChart');if(!el)return;
@@ -2075,6 +2156,7 @@ function renderPeriod(purchases){
     {label:'지난 달',from:(()=>{const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-1);return d.toISOString().split('T')[0];})(),to:(()=>{const d=new Date();d.setDate(0);return d.toISOString().split('T')[0];})()},
   ];
 
+  const pay=calcPaySummary(filtered);
   return `
   <div class="card" style="margin-bottom:12px;">
     <div style="font-size:13px;font-weight:500;color:#1a1a1a;margin-bottom:10px;">조회 기간</div>
@@ -2092,6 +2174,7 @@ function renderPeriod(purchases){
     <div class="stats-label">${from} ~ ${to}</div>
     <div class="stats-amount">₩${formatPrice(totalAmt)}</div>
     <div class="stats-label" style="margin-top:4px;">${filtered.length}건 판매</div>
+    ${payBadge(pay.card,pay.cash)}
   </div>
   ${frames.length?`
   <div class="section-label" style="margin-top:14px;">프레임 판매</div>
