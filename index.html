@@ -329,6 +329,8 @@ async function openDetail(id){
 }
 function renderDetail(cu){
   destroyCharts();
+  // 탭 전환 시 동적 폼 카운터 리셋
+  _frameItemCount=1;_lensItemCount=1;
   if(currentTab===0){setNav(true,cu.name,'',null);renderInfoTab(cu);}
   else if(currentTab===1){setNav(true,cu.name,'+ 검안기록',showExamForm);renderExamTab(cu);}
   else if(currentTab===2){setNav(true,cu.name,'+ 구매',showPurchaseForm);renderPurchaseTab(cu);}
@@ -673,6 +675,7 @@ async function deleteExam(idx){
 // 구매내역 탭
 function renderPurchaseTab(cu){
   const purchases=[...cu.purchases].reverse();
+  _frameItemCount=1;_lensItemCount=1;
   document.getElementById('main-content').innerHTML=`
     <div id="purchase-form-area"></div>
     ${purchases.length?purchases.map((p,ri)=>{
@@ -718,7 +721,9 @@ function renderPurchaseTab(cu){
 
 async function showPurchaseForm(forceOpen){
   const area=document.getElementById('purchase-form-area');if(!area)return;
-  if(!forceOpen&&area.innerHTML){area.innerHTML='';return;}
+  // 이미 열린 폼이면 닫기 (단, forceOpen이면 무조건 열기)
+  const isOpen=area.innerHTML.trim().length>0;
+  if(!forceOpen&&isOpen){area.innerHTML='';return;}
   const today=new Date().toISOString().split('T')[0];
   await loadProducts();
   const frameBrands=[...new Set(products.filter(p=>p.category==='frame').map(p=>p.brand))];
@@ -783,24 +788,28 @@ async function showPurchaseForm(forceOpen){
       <div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px;">프레임과 렌즈 할인을 각각 입력하세요. 비워두면 할인 없음으로 처리됩니다.</div>
       <div style="background:#FFF8F7;border:0.5px solid #FFD5D0;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:500;color:#c41c00;margin-bottom:8px;">프레임 할인</div>
-        <div class="form-grid" style="gap:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
           <div><div class="form-label">방식</div>
             <select class="form-input" id="p-disc-frame-type" onchange="calcTotal()">
               <option value="percent">%</option><option value="amount">금액(원)</option>
             </select></div>
           <div><div class="form-label">할인 값</div>
             <input class="form-input" placeholder="0" id="p-disc-frame-value" oninput="calcTotal()" type="number" min="0"></div>
+          <div><div class="form-label">추가할인 (원)</div>
+            <input class="form-input" placeholder="0" id="p-disc-frame-extra" oninput="calcTotal()" type="number" min="0"></div>
         </div>
       </div>
       <div style="background:#F0F9F0;border:0.5px solid #C5E8C5;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:500;color:#2d5a1b;margin-bottom:8px;">렌즈 할인</div>
-        <div class="form-grid" style="gap:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
           <div><div class="form-label">방식</div>
             <select class="form-input" id="p-disc-lens-type" onchange="calcTotal()">
               <option value="percent">%</option><option value="amount">금액(원)</option>
             </select></div>
           <div><div class="form-label">할인 값</div>
             <input class="form-input" placeholder="0" id="p-disc-lens-value" oninput="calcTotal()" type="number" min="0"></div>
+          <div><div class="form-label">추가할인 (원)</div>
+            <input class="form-input" placeholder="0" id="p-disc-lens-extra" oninput="calcTotal()" type="number" min="0"></div>
         </div>
       </div>
       <div style="background:#F5F5F5;border-radius:10px;padding:12px;margin:12px 0;">
@@ -1063,11 +1072,13 @@ function calcTotal(){
   // 프레임 할인
   const dftype=document.getElementById('p-disc-frame-type')?.value||'percent';
   const dfv=parseInt(document.getElementById('p-disc-frame-value')?.value||0)||0;
-  const frameDisc=dfv>0?(dftype==='percent'?Math.round(fp*dfv/100):dfv):0;
+  const dfextra=parseInt(document.getElementById('p-disc-frame-extra')?.value||0)||0;
+  const frameDisc=(dfv>0?(dftype==='percent'?Math.round(fp*dfv/100):dfv):0)+dfextra;
   // 렌즈 할인
   const dltype=document.getElementById('p-disc-lens-type')?.value||'percent';
   const dlv=parseInt(document.getElementById('p-disc-lens-value')?.value||0)||0;
-  const lensDisc=dlv>0?(dltype==='percent'?Math.round(lp*dlv/100):dlv):0;
+  const dlextra=parseInt(document.getElementById('p-disc-lens-extra')?.value||0)||0;
+  const lensDisc=(dlv>0?(dltype==='percent'?Math.round(lp*dlv/100):dlv):0)+dlextra;
   const totalDisc=frameDisc+lensDisc;
   const final=Math.max(0,sub-totalDisc);
   const subEl=document.getElementById('p-subtotal');if(subEl)subEl.textContent='₩'+formatPrice(sub);
@@ -1089,10 +1100,12 @@ async function savePurchase(){
   const sub=fp+lp;
   const dftype=document.getElementById('p-disc-frame-type')?.value||'percent';
   const dfv=parseInt(g('p-disc-frame-value')||0)||0;
-  const frameDisc=dfv>0?(dftype==='percent'?Math.round(fp*dfv/100):dfv):0;
+  const dfextra=parseInt(g('p-disc-frame-extra')||0)||0;
+  const frameDisc=(dfv>0?(dftype==='percent'?Math.round(fp*dfv/100):dfv):0)+dfextra;
   const dltype=document.getElementById('p-disc-lens-type')?.value||'percent';
   const dlv=parseInt(g('p-disc-lens-value')||0)||0;
-  const lensDisc=dlv>0?(dltype==='percent'?Math.round(lp*dlv/100):dlv):0;
+  const dlextra=parseInt(g('p-disc-lens-extra')||0)||0;
+  const lensDisc=(dlv>0?(dltype==='percent'?Math.round(lp*dlv/100):dlv):0)+dlextra;
   const totalDisc=frameDisc+lensDisc;
   const finalPrice=Math.max(0,sub-totalDisc);
   const memo=g('p-memo');
@@ -1118,7 +1131,9 @@ async function savePurchase(){
     lens_qty_a:lensQty,lens_qty_b:lensQty2,
     price:String(finalPrice),
     discount_frame_type:dfv?dftype:null,discount_frame_value:dfv||0,
+    discount_frame_extra:dfextra||0,
     discount_lens_type:dlv?dltype:null,discount_lens_value:dlv||0,
+    discount_lens_extra:dlextra||0,
     discount_value:totalDisc||0,
     final_price:finalPrice,payment_method:currentPayMethod,lens:g('p-lens-rx'),
     memo:memo
@@ -1162,7 +1177,7 @@ function showPurchaseEditForm(idx){
       </div>
       <div style="background:#FFF8F7;border:0.5px solid #FFD5D0;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:500;color:#c41c00;margin-bottom:8px;">프레임 할인</div>
-        <div class="form-grid" style="gap:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
           <div><div class="form-label">방식</div>
             <select class="form-input" id="pe-dft-${idx}" onchange="calcEditTotal(${idx})">
               <option value="percent" ${p.discount_frame_type==='percent'||!p.discount_frame_type?'selected':''}>%</option>
@@ -1170,11 +1185,13 @@ function showPurchaseEditForm(idx){
             </select></div>
           <div><div class="form-label">할인 값</div>
             <input class="form-input" type="number" value="${p.discount_frame_value||0}" id="pe-dfv-${idx}" oninput="calcEditTotal(${idx})"></div>
+          <div><div class="form-label">추가할인 (원)</div>
+            <input class="form-input" type="number" value="${p.discount_frame_extra||0}" id="pe-dfex-${idx}" oninput="calcEditTotal(${idx})"></div>
         </div>
       </div>
       <div style="background:#F0F9F0;border:0.5px solid #C5E8C5;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:500;color:#2d5a1b;margin-bottom:8px;">렌즈 할인</div>
-        <div class="form-grid" style="gap:8px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
           <div><div class="form-label">방식</div>
             <select class="form-input" id="pe-dlt-${idx}" onchange="calcEditTotal(${idx})">
               <option value="percent" ${p.discount_lens_type==='percent'||!p.discount_lens_type?'selected':''}>%</option>
@@ -1182,6 +1199,8 @@ function showPurchaseEditForm(idx){
             </select></div>
           <div><div class="form-label">할인 값</div>
             <input class="form-input" type="number" value="${p.discount_lens_value||0}" id="pe-dlv-${idx}" oninput="calcEditTotal(${idx})"></div>
+          <div><div class="form-label">추가할인 (원)</div>
+            <input class="form-input" type="number" value="${p.discount_lens_extra||0}" id="pe-dlex-${idx}" oninput="calcEditTotal(${idx})"></div>
         </div>
       </div>
       <div style="background:#F5F5F5;border-radius:8px;padding:10px;margin:10px 0;">
@@ -1247,10 +1266,12 @@ function calcEditTotal(idx){
   const sub=fp+lp;
   const dft=document.getElementById('pe-dft-'+idx)?.value||'percent';
   const dfv=parseInt(document.getElementById('pe-dfv-'+idx)?.value||0)||0;
-  const frameDisc=dfv>0?(dft==='percent'?Math.round(fp*dfv/100):dfv):0;
+  const dfex=parseInt(document.getElementById('pe-dfex-'+idx)?.value||0)||0;
+  const frameDisc=(dfv>0?(dft==='percent'?Math.round(fp*dfv/100):dfv):0)+dfex;
   const dlt=document.getElementById('pe-dlt-'+idx)?.value||'percent';
   const dlv=parseInt(document.getElementById('pe-dlv-'+idx)?.value||0)||0;
-  const lensDisc=dlv>0?(dlt==='percent'?Math.round(lp*dlv/100):dlv):0;
+  const dlex=parseInt(document.getElementById('pe-dlex-'+idx)?.value||0)||0;
+  const lensDisc=(dlv>0?(dlt==='percent'?Math.round(lp*dlv/100):dlv):0)+dlex;
   const totalDisc=frameDisc+lensDisc;
   const final=Math.max(0,sub-totalDisc);
   const se=document.getElementById('pe-sub-'+idx);if(se)se.textContent='₩'+formatPrice(sub);
@@ -1265,10 +1286,12 @@ async function savePurchaseEdit(idx){
   const sub=fp+lp;
   const dft=document.getElementById('pe-dft-'+idx)?.value||'percent';
   const dfv=parseInt(g('pe-dfv-'+idx)||0)||0;
-  const frameDisc=dfv>0?(dft==='percent'?Math.round(fp*dfv/100):dfv):0;
+  const dfex=parseInt(g('pe-dfex-'+idx)||0)||0;
+  const frameDisc=(dfv>0?(dft==='percent'?Math.round(fp*dfv/100):dfv):0)+dfex;
   const dlt=document.getElementById('pe-dlt-'+idx)?.value||'percent';
   const dlv=parseInt(g('pe-dlv-'+idx)||0)||0;
-  const lensDisc=dlv>0?(dlt==='percent'?Math.round(lp*dlv/100):dlv):0;
+  const dlex=parseInt(g('pe-dlex-'+idx)||0)||0;
+  const lensDisc=(dlv>0?(dlt==='percent'?Math.round(lp*dlv/100):dlv):0)+dlex;
   const totalDisc=frameDisc+lensDisc;
   const final=Math.max(0,sub-totalDisc);
   const fi=g('pe-frame-item-'+idx);const li=g('pe-lens-item-'+idx);
@@ -1277,7 +1300,9 @@ async function savePurchaseEdit(idx){
     item:[fi,li].filter(Boolean).join(' / ')||'—',
     frame_price:fp,lens_price:lp,memo:g('pe-memo-'+idx),
     discount_frame_type:dfv?dft:null,discount_frame_value:dfv||0,
+    discount_frame_extra:dfex||0,
     discount_lens_type:dlv?dlt:null,discount_lens_value:dlv||0,
+    discount_lens_extra:dlex||0,
     discount_value:totalDisc||0,
     final_price:final,price:String(final),
     payment_method:getPePayMethod(idx),lens:g('pe-lens-'+idx)
@@ -1400,7 +1425,10 @@ async function saveNewCustomer(){
   document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',i===2));
   renderDetail(currentCustomer);
   // 신규 고객은 바로 구매 입력창 열기
-  setTimeout(()=>{ showPurchaseForm(true); }, 100);
+  setTimeout(async ()=>{
+    const area=document.getElementById('purchase-form-area');
+    if(area&&area.innerHTML.trim().length===0) await showPurchaseForm(true);
+  }, 150);
 }
 
 // 설정 페이지
