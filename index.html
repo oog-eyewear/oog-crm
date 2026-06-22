@@ -1491,13 +1491,15 @@ function showSettingsPage(){
     <button class="action-btn" onclick="showAddProductForm('frame')">+ 프레임 상품 추가</button>
     <button class="action-btn" onclick="showAddProductForm('lens')">+ 렌즈 상품 추가</button>
     <div id="add-product-area"></div>
-    <div style="display:flex;gap:8px;margin-bottom:8px;">
-      <button class="action-btn" onclick="downloadProductTemplate()" style="flex:1;text-align:center;">📋 엑셀 템플릿 다운로드</button>
-      <label class="action-btn" style="flex:1;text-align:center;cursor:pointer;margin-bottom:0;">
-        📤 엑셀로 상품 일괄 등록
-        <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importProducts(event)">
-      </label>
+    <div style="display:flex;gap:8px;margin-bottom:6px;">
+      <button class="action-btn" onclick="downloadCurrentProducts()" style="flex:1;text-align:center;margin-bottom:0;">📥 현재 상품목록 다운로드</button>
+      <button class="action-btn" onclick="downloadProductTemplate()" style="flex:1;text-align:center;margin-bottom:0;">📋 빈 템플릿 다운로드</button>
     </div>
+    <label class="action-btn" style="text-align:center;cursor:pointer;">
+      📤 엑셀로 상품 일괄 등록/업데이트
+      <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importProducts(event)">
+    </label>
+    <div style="font-size:11px;color:var(--text-hint);margin:-4px 0 8px;padding:0 2px;">※ 브랜드+상품명+옵션이 같으면 업데이트, 없으면 신규 추가</div>
     <div id="product-import-msg" style="font-size:12px;margin-bottom:8px;"></div>
     <div class="section-label">직원 계정 관리</div>
     <div class="card" style="margin-bottom:12px;"><div id="staff-list"><div class="spinner"></div></div></div>
@@ -1710,6 +1712,46 @@ async function deleteProduct(id){
   products=[];loadProductList();
 }
 
+async function downloadCurrentProducts(){
+  // 최신 상품 목록 로드
+  const {data,error}=await sb.from('products').select('*').order('category').order('brand').order('name').order('option');
+  if(error||!data||!data.length){alert('등록된 상품이 없습니다.');return;}
+
+  const wb=XLSX.utils.book_new();
+
+  // 안내 시트
+  const guideWs=XLSX.utils.aoa_to_sheet([
+    ['OOG 안경원 상품목록 — 다운로드: '+new Date().toLocaleDateString('ko-KR')],
+    [''],
+    ['수정 방법:'],
+    ['1. 상품목록 시트에서 원하는 항목을 수정하세요 (id 컬럼은 수정하지 마세요).'],
+    ['2. 새 상품 추가 시 id 컬럼을 비워두세요. 브랜드+상품명+옵션 기준으로 자동 처리됩니다.'],
+    ['3. 수정 완료 후 저장 → CRM 설정에서 [엑셀로 상품 일괄 등록/업데이트] 클릭.'],
+    [''],
+    ['category: frame(프레임) / lens(렌즈) / etc(기타)'],
+    ['price: 판매가 (숫자만, 예: 350000)'],
+    ['cost: 도매원가 (숫자만, 예: 150000)'],
+  ]);
+  guideWs['!cols']=[{wch:70}];
+  XLSX.utils.book_append_sheet(wb,guideWs,'작성안내');
+
+  // 상품목록 시트
+  const rows=data.map(p=>({
+    id:p.id,
+    category:p.category||'',
+    brand:p.brand||'',
+    name:p.name||'',
+    option:p.option||'',
+    price:p.price||0,
+    cost:p.cost||0,
+  }));
+  const ws=XLSX.utils.json_to_sheet(rows);
+  ws['!cols']=[{wch:38},{wch:10},{wch:22},{wch:22},{wch:16},{wch:10},{wch:10}];
+  XLSX.utils.book_append_sheet(wb,ws,'상품목록');
+
+  XLSX.writeFile(wb,'OOG_상품목록_'+new Date().toISOString().split('T')[0]+'.xlsx');
+}
+
 function downloadProductTemplate(){
   const wb=XLSX.utils.book_new();
   // 안내 시트
@@ -1727,15 +1769,15 @@ function downloadProductTemplate(){
 
   // 상품목록 시트 (헤더 + 예시 데이터)
   const sampleData=[
-    {category:'frame',brand:'Kaneko Optical',name:'KJ-189',option:'Matt Black',price:350000},
-    {category:'frame',brand:'Kaneko Optical',name:'KJ-189',option:'Antique Gold',price:350000},
-    {category:'frame',brand:'Kaneko Optical',name:'KJ-210',option:'Dark Brown',price:420000},
-    {category:'lens',brand:'Hoya',name:'Hilux 1.60',option:'1.60',price:180000},
-    {category:'lens',brand:'Hoya',name:'Hilux 1.67',option:'1.67',price:220000},
-    {category:'lens',brand:'Seiko',name:'Super SV',option:'1.74',price:280000},
+    {category:'frame',brand:'Kaneko Optical',name:'KJ-189',option:'Matt Black',price:350000,cost:150000},
+    {category:'frame',brand:'Kaneko Optical',name:'KJ-189',option:'Antique Gold',price:350000,cost:150000},
+    {category:'frame',brand:'Kaneko Optical',name:'KJ-210',option:'Dark Brown',price:420000,cost:180000},
+    {category:'lens',brand:'Hoya',name:'Hilux 1.60',option:'1.60',price:180000,cost:80000},
+    {category:'lens',brand:'Hoya',name:'Hilux 1.67',option:'1.67',price:220000,cost:95000},
+    {category:'lens',brand:'Seiko',name:'Super SV',option:'1.74',price:280000,cost:120000},
   ];
   const ws=XLSX.utils.json_to_sheet(sampleData);
-  ws['!cols']=[{wch:10},{wch:20},{wch:20},{wch:16},{wch:10}];
+  ws['!cols']=[{wch:10},{wch:20},{wch:20},{wch:16},{wch:10},{wch:10}];
   XLSX.utils.book_append_sheet(wb,ws,'상품목록');
 
   XLSX.writeFile(wb,'OOG_상품목록_템플릿.xlsx');
@@ -1766,28 +1808,45 @@ async function importProducts(event){
       });
       const invalid=rows.length-valid.length;
       if(!valid.length){
-        if(msgEl){msgEl.style.color='#FF2400';msgEl.textContent='오류: 유효한 상품이 없습니다. category는 frame/lens 중 하나여야 합니다.';}
+        if(msgEl){msgEl.style.color='#FF2400';msgEl.textContent='오류: 유효한 상품이 없습니다. category는 frame/lens/etc 중 하나여야 합니다.';}
         return;
       }
-      const confirmMsg=`${valid.length}개 상품을 등록할까요?${invalid>0?' ('+invalid+'개 오류 행은 건너뜁니다.)':''}`;
+      const confirmMsg=`${valid.length}개 상품을 등록/업데이트할까요?${invalid>0?' ('+invalid+'개 오류 행은 건너뜁니다.)':''}`;
       if(!confirm(confirmMsg))return;
-      if(msgEl){msgEl.style.color='#6b6b6b';msgEl.textContent='등록 중...';}
-      const toInsert=valid.map(r=>({
-        category:String(r.category).trim().toLowerCase(),
-        brand:String(r.brand||'').trim()||null,
-        name:String(r.name).trim(),
-        option:String(r.option||'').trim()||null,
-        price:parseInt(r.price)||0
-      }));
-      const {error}=await sb.from('products').insert(toInsert);
-      if(error){
-        if(msgEl){msgEl.style.color='#FF2400';msgEl.textContent='오류: '+error.message;}
-        return;
+      if(msgEl){msgEl.style.color='#6b6b6b';msgEl.textContent='처리 중...';}
+
+      // id가 있으면 업데이트, 없으면 브랜드+상품명+옵션으로 기존 상품 찾아서 업데이트, 없으면 신규 추가
+      await loadProducts();
+      let updated=0, inserted=0, failed=0;
+      for(const r of valid){
+        const cat=String(r.category).trim().toLowerCase();
+        const brand=String(r.brand||'').trim()||null;
+        const name=String(r.name).trim();
+        const option=String(r.option||'').trim()||null;
+        const price=parseInt(r.price)||0;
+        const cost=parseInt(r.cost)||0;
+        const rowId=r.id?String(r.id).trim():null;
+
+        if(rowId){
+          // id로 업데이트
+          const {error}=await sb.from('products').update({category:cat,brand,name,option,price,cost}).eq('id',rowId);
+          if(error) failed++; else updated++;
+        } else {
+          // 브랜드+상품명+옵션으로 기존 상품 찾기
+          const existing=products.find(p=>p.category===cat&&p.brand===brand&&p.name===name&&(p.option||null)===(option||null));
+          if(existing){
+            const {error}=await sb.from('products').update({price,cost}).eq('id',existing.id);
+            if(error) failed++; else updated++;
+          } else {
+            const {error}=await sb.from('products').insert({category:cat,brand,name,option,price,cost});
+            if(error) failed++; else inserted++;
+          }
+        }
       }
       products=[];
-      if(msgEl){msgEl.style.color='#2d5a1b';msgEl.textContent='✓ '+toInsert.length+'개 상품이 등록되었습니다!';}
+      const msg=`✓ 신규 ${inserted}개 추가, ${updated}개 업데이트${failed>0?' (실패 '+failed+'개)':''}`;
+      if(msgEl){msgEl.style.color=failed>0?'#FF2400':'#2d5a1b';msgEl.textContent=msg;}
       loadProductList();
-      // 파일 입력 초기화 (같은 파일 재업로드 가능하게)
       event.target.value='';
     }catch(err){
       if(msgEl){msgEl.style.color='#FF2400';msgEl.textContent='파일 읽기 실패: '+err.message;}
