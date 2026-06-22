@@ -1150,6 +1150,9 @@ async function savePurchase(){
   const lens2Price=lensItems[1]?.price||0;
   const lensQty=lensItems[0]?.qty||1;
   const lensQty2=lensItems[1]?.qty||1;
+  // 원가 합산: 상품 DB에서 매칭되는 항목의 cost 합산
+  function findCost(itemName){ if(!itemName)return 0; const p=products.find(p=>[p.brand,p.name,p.option].filter(Boolean).join(' ')===itemName); return p?.cost||0; }
+  const costTotal=findCost(frameItem)+findCost(frame2Item)+(findCost(lensItem)*lensQty)+(findCost(lens2Item)*lensQty2);
   const newP={
     customer_id:cu.id,date:purchaseDate,
     item:[frameItem,frame2Item,lensItem,lens2Item].filter(Boolean).join(' / ')||'—',
@@ -1158,6 +1161,7 @@ async function savePurchase(){
     frame_price:framePrice,frame_price_b:frame2Price||null,
     lens_price:lensPrice,lens_price_b:lens2Price||null,
     lens_qty_a:lensQty,lens_qty_b:lensQty2,
+    cost_total:Math.round(costTotal)||0,
     price:String(finalPrice),
     discount_frame_type:dfv?dftype:null,discount_frame_value:dfv||0,
     discount_frame_extra:dfextra||0,
@@ -1542,7 +1546,10 @@ async function loadProductList(){
             <div class="admin-row" style="padding:8px 12px;" id="prod-row-${p.id}">
               <div style="flex:1;min-width:0;">
                 <div style="font-size:13px;font-weight:500;color:var(--text-primary);">${p.name}${p.option?' <span style="color:var(--text-hint);font-weight:400;">/ '+p.option+'</span>':''}</div>
-                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">${p.price?'₩'+formatPrice(p.price):'금액 미설정'}</div>
+                <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">
+                  ${p.price?'판매가 ₩'+formatPrice(p.price):'금액 미설정'}
+                  ${p.cost?` · 원가 ₩${formatPrice(p.cost)} · 마진율 ${p.price?Math.round((p.price-p.cost)/p.price*100)+'%':'—'}`:''}
+                </div>
               </div>
               <div style="display:flex;gap:6px;flex-shrink:0;">
                 <button class="edit-btn" onclick="showEditProductForm('${p.id}')">수정</button>
@@ -1592,7 +1599,8 @@ function showEditProductForm(id){
       <div><div class="form-label">브랜드</div><input class="form-input" id="pe-brand-${id}" value="${p.brand||''}"></div>
       <div><div class="form-label">상품명</div><input class="form-input" id="pe-name-${id}" value="${p.name||''}"></div>
       <div><div class="form-label">${cat==='frame'?'컬러':'굴절률'}</div><input class="form-input" id="pe-option-${id}" value="${p.option||''}"></div>
-      <div><div class="form-label">금액 (원)</div><input class="form-input" type="number" id="pe-price-${id}" value="${p.price||0}" min="0"></div>
+      <div><div class="form-label">판매가 (원)</div><input class="form-input" type="number" id="pe-price-${id}" value="${p.price||0}" min="0"></div>
+      <div><div class="form-label">도매원가 (원)</div><input class="form-input" type="number" id="pe-cost-${id}" value="${p.cost||0}" min="0"></div>
     </div>
     <div style="display:flex;gap:8px;">
       <button class="action-btn primary" onclick="saveProductEdit('${id}')" style="margin-bottom:0;flex:1;">저장</button>
@@ -1615,7 +1623,8 @@ async function saveProductEdit(id){
   const oldItemName=oldProduct?[oldProduct.brand,oldProduct.name,oldProduct.option].filter(Boolean).join(' '):null;
   const newItemName=[brand,name,option].filter(Boolean).join(' ');
 
-  const {error}=await sb.from('products').update({brand,name,option,price}).eq('id',id);
+  const cost=parseInt(document.getElementById('pe-cost-'+id)?.value||0)||0;
+  const {error}=await sb.from('products').update({brand,name,option,price,cost}).eq('id',id);
   if(error){if(msg)msg.textContent='오류: '+error.message;return;}
 
   // 상품명이 바뀐 경우 구매내역 업데이트 여부 확인
@@ -1671,7 +1680,8 @@ function showAddProductForm(cat){
         <div><div class="form-label">브랜드/제조사</div><input class="form-input" id="prod-brand" placeholder="${cat==='etc'?'예) 옵틱클리너':'예) Kaneko Optical'}"></div>
         <div><div class="form-label">상품명</div><input class="form-input" id="prod-name" placeholder="${cat==='etc'?'예) 세정제 30ml':'예) KJ-189'}"></div>
         <div><div class="form-label">${cat==='frame'?'컬러':cat==='lens'?'굴절률':'규격/옵션'}</div><input class="form-input" id="prod-option" placeholder="${cat==='frame'?'예) Matt Black':cat==='lens'?'예) 1.67':'예) 블루'}"></div>
-        <div><div class="form-label">금액 (원)</div><input class="form-input" type="number" id="prod-price" placeholder="0" min="0"></div>
+        <div><div class="form-label">판매가 (원)</div><input class="form-input" type="number" id="prod-price" placeholder="0" min="0"></div>
+        <div><div class="form-label">도매원가 (원)</div><input class="form-input" type="number" id="prod-cost" placeholder="0" min="0"></div>
       </div>
       <button class="action-btn primary" onclick="saveProduct('${cat}')" style="margin-top:4px;margin-bottom:0;">저장</button>
       <div id="prod-msg" style="font-size:12px;margin-top:8px;color:#FF2400;"></div>
@@ -1683,9 +1693,10 @@ async function saveProduct(cat){
   const name=document.getElementById('prod-name')?.value.trim();
   const option=document.getElementById('prod-option')?.value.trim()||null;
   const price=parseInt(document.getElementById('prod-price')?.value||0)||0;
+  const cost=parseInt(document.getElementById('prod-cost')?.value||0)||0;
   const msg=document.getElementById('prod-msg');
   if(!brand||!name){if(msg)msg.textContent='브랜드와 상품명을 입력해주세요.';return;}
-  const {error}=await sb.from('products').insert({category:cat,brand,name,option,price});
+  const {error}=await sb.from('products').insert({category:cat,brand,name,option,price,cost});
   if(error){if(msg)msg.textContent='오류: '+error.message;return;}
   products=[];
   const area=document.getElementById('add-product-area');
@@ -1988,6 +1999,7 @@ function renderStatsPage(purchases,cuMap){
     <button class="stats-tab-btn${statsTab==='period'?' active':''}" onclick="setStatsTab('period')">기간조회</button>
     <button class="stats-tab-btn${statsTab==='ranking'?' active':''}" onclick="setStatsTab('ranking')">고객순위</button>
     <button class="stats-tab-btn${statsTab==='products'?' active':''}" onclick="setStatsTab('products')">상품별</button>
+    <button class="stats-tab-btn${statsTab==='margin'?' active':''}" onclick="setStatsTab('margin')">원가/마진</button>
   </div>`;
   let body='';
   if(statsTab==='monthly') body=renderMonthly(purchases);
@@ -1996,6 +2008,7 @@ function renderStatsPage(purchases,cuMap){
   else if(statsTab==='yearly') body=renderYearly(purchases);
   else if(statsTab==='period') body=renderPeriod(purchases);
   else if(statsTab==='ranking') body=renderRanking(purchases,cuMap);
+  else if(statsTab==='margin') body=renderMargin(purchases);
   else body=renderProductStats(purchases);
   const dlBtn=`<button onclick="downloadStatsExcel()" style="display:flex;align-items:center;gap:6px;background:#fff;border:0.5px solid var(--border);border-radius:8px;padding:8px 14px;font-size:13px;color:var(--text-secondary);cursor:pointer;margin-bottom:12px;width:100%;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -2225,6 +2238,112 @@ function renderRanking(purchases,cuMap){
   <div class="card">${rows||'<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">구매 내역이 없습니다.</div>'}</div>`;
 }
 
+// 원가/마진 탭 서브필터
+let _marginSub='monthly';
+function setMarginSub(s){
+  _marginSub=s;
+  renderStatsPage(_statsData.purchases,_statsData.cuMap);
+}
+
+function renderMargin(purchases){
+  // 서브탭
+  const subTabs=['monthly','daily','yearly','period'].map(k=>({k,label:{monthly:'월별',daily:'일별',yearly:'연도별',period:'기간별'}[k]}));
+  const subBar=`<div style="display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;">
+    ${subTabs.map(t=>`<button onclick="setMarginSub('${t.k}')" style="flex-shrink:0;border:0.5px solid ${_marginSub===t.k?'#1a1a1a':'var(--border)'}!important;background:${_marginSub===t.k?'#1a1a1a':'#fff'}!important;border-radius:20px!important;padding:7px 13px!important;font-size:12px!important;color:${_marginSub===t.k?'#fff':'var(--text-secondary)'}!important;cursor:pointer!important;-webkit-appearance:none!important;">${t.label}</button>`).join('')}
+  </div>`;
+
+  // 기간 필터 적용
+  let filtered=purchases, groupKey, groupLabel;
+  const now=new Date();
+  if(_marginSub==='monthly'){
+    const prefix=now.toISOString().slice(0,7);
+    // 최근 12개월
+    groupKey=p=>p.date?.slice(0,7);
+    groupLabel=k=>k;
+    filtered=purchases.filter(p=>p.date);
+  } else if(_marginSub==='daily'){
+    const prefix=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    filtered=purchases.filter(p=>(p.date||'').startsWith(prefix));
+    groupKey=p=>p.date?.slice(0,10);
+    groupLabel=k=>k;
+  } else if(_marginSub==='yearly'){
+    filtered=purchases.filter(p=>p.date);
+    groupKey=p=>p.date?.slice(0,4);
+    groupLabel=k=>k+'년';
+  } else {
+    // period
+    filtered=purchases.filter(p=>p.date&&p.date>=_periodFrom&&p.date<=_periodTo);
+    groupKey=p=>p.date?.slice(0,10);
+    groupLabel=k=>k;
+  }
+
+  // 그룹별 집계
+  const groups={};
+  filtered.forEach(p=>{
+    const k=groupKey(p);if(!k)return;
+    if(!groups[k])groups[k]={sales:0,cost:0,cnt:0,noCost:0};
+    const sales=parsePrice(p.final_price||p.price);
+    const cost=parsePrice(p.cost_total||0);
+    groups[k].sales+=sales;
+    groups[k].cost+=cost;
+    groups[k].cnt+=1;
+    if(!p.cost_total) groups[k].noCost+=1;
+  });
+
+  const keys=Object.keys(groups).sort().reverse().slice(0,24);
+  const totalSales=filtered.reduce((s,p)=>s+parsePrice(p.final_price||p.price),0);
+  const totalCost=filtered.reduce((s,p)=>s+parsePrice(p.cost_total||0),0);
+  const totalMargin=totalSales-totalCost;
+  const totalMarginRate=totalSales>0?Math.round(totalMargin/totalSales*100):0;
+  const noCostCnt=filtered.filter(p=>!p.cost_total).length;
+
+  function marginColor(rate){ return rate>=50?'#2d5a1b':rate>=30?'#7a4800':'#c41c00'; }
+
+  const periodTitle=_marginSub==='period'?`${_periodFrom} ~ ${_periodTo}`:
+    _marginSub==='daily'?`${now.getFullYear()}년 ${now.getMonth()+1}월`:
+    _marginSub==='yearly'?'전체 연도별':'최근 24개월';
+
+  return subBar+`
+  <div class="stats-summary" style="margin-bottom:12px;">
+    <div class="stats-label">${periodTitle}</div>
+    <div class="stats-amount">₩${formatPrice(totalSales)}</div>
+    <div style="display:flex;justify-content:center;gap:16px;margin-top:8px;flex-wrap:wrap;">
+      <div style="text-align:center;">
+        <div style="font-size:11px;color:var(--text-hint);">원가</div>
+        <div style="font-size:15px;font-weight:600;color:#c41c00;">₩${formatPrice(totalCost)}</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:11px;color:var(--text-hint);">마진</div>
+        <div style="font-size:15px;font-weight:600;color:#2d5a1b;">₩${formatPrice(totalMargin)}</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:11px;color:var(--text-hint);">마진율</div>
+        <div style="font-size:15px;font-weight:600;color:${marginColor(totalMarginRate)};">${totalMarginRate}%</div>
+      </div>
+    </div>
+    ${noCostCnt>0?`<div style="font-size:11px;color:var(--text-hint);margin-top:6px;">⚠ 원가 미등록 ${noCostCnt}건 포함 (해당 건 원가=0 처리)</div>`:''}
+  </div>
+  <div class="card">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;margin-bottom:4px;padding-bottom:8px;border-bottom:0.5px solid #EBEBEB;">
+      <div style="font-size:11px;font-weight:600;color:var(--text-hint);">기간</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text-hint);text-align:right;">매출</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text-hint);text-align:right;">마진</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text-hint);text-align:right;">마진율</div>
+    </div>
+    ${keys.length?keys.map(k=>{
+      const g=groups[k];
+      const margin=g.sales-g.cost;
+      const rate=g.sales>0?Math.round(margin/g.sales*100):0;
+      return `<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;padding:9px 0;border-bottom:0.5px solid #EBEBEB;">
+        <div style="font-size:12px;color:var(--text-secondary);">${groupLabel(k)}</div>
+        <div style="font-size:12px;font-weight:500;text-align:right;">₩${formatPrice(g.sales)}</div>
+        <div style="font-size:12px;font-weight:500;text-align:right;color:#2d5a1b;">₩${formatPrice(margin)}</div>
+        <div style="font-size:12px;font-weight:600;text-align:right;color:${marginColor(rate)};">${rate}%</div>
+      </div>`;
+    }).join(''):'<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">데이터가 없습니다.</div>'}
+  </div>`;
+}
+
 function renderProductStats(purchases){
   const frameMap={},lensMap={};
   purchases.forEach(p=>{
@@ -2301,6 +2420,24 @@ function downloadStatsExcel(){
     const cuTotal={};purchases.forEach(p=>{if(!p.customer_id)return;cuTotal[p.customer_id]=(cuTotal[p.customer_id]||0)+parsePrice(p.final_price||p.price);});
     rows=Object.keys(cuTotal).map(id=>({id,total:cuTotal[id],cu:cuMap[id]||null})).sort((a,b)=>b.total-a.total)
       .map((r,i)=>({'순위':i+1,'고객명':r.cu?r.cu.name:'알 수 없음','총구매금액(원)':r.total,'구매건수':purchases.filter(p=>p.customer_id===r.id).length}));
+  }else if(statsTab==='margin'){
+    sheetName='원가마진분석';
+    const purchases2=_statsData.purchases||[];
+    let filtered2=purchases2.filter(p=>p.date);
+    if(_marginSub==='daily'){const prefix=new Date().toISOString().slice(0,7);filtered2=filtered2.filter(p=>p.date.startsWith(prefix));}
+    else if(_marginSub==='period'){filtered2=filtered2.filter(p=>p.date>=_periodFrom&&p.date<=_periodTo);}
+    const groups2={};
+    filtered2.forEach(p=>{
+      const k=_marginSub==='daily'?p.date.slice(0,10):_marginSub==='yearly'?p.date.slice(0,4):_marginSub==='period'?p.date.slice(0,10):p.date.slice(0,7);
+      if(!groups2[k])groups2[k]={sales:0,cost:0,cnt:0};
+      groups2[k].sales+=parsePrice(p.final_price||p.price);
+      groups2[k].cost+=parsePrice(p.cost_total||0);
+      groups2[k].cnt+=1;
+    });
+    rows=Object.keys(groups2).sort().reverse().map(k=>{
+      const g=groups2[k];const margin=g.sales-g.cost;const rate=g.sales>0?Math.round(margin/g.sales*100):0;
+      return {'기간':k,'매출(원)':g.sales,'원가(원)':g.cost,'마진(원)':margin,'마진율(%)':rate,'판매건수':g.cnt};
+    });
   }else if(statsTab==='products'){
     sheetName='상품별판매';
     const frameMap={},lensMap={};
