@@ -231,7 +231,8 @@ async function renderList(){
   setNav(false,'','+ 신규',showNewCustomerForm);
   document.getElementById('tab-bar').style.display='none';
   document.getElementById('main-content').innerHTML=`
-    <input class="search-bar" placeholder="고객 이름 또는 연락처 검색..." oninput="applyListFilter()" id="search-input">
+    <input class="search-bar" placeholder="고객 이름, 연락처, 구매 상품명 검색..." oninput="applyListFilter()" id="search-input">
+    <div id="search-product-result" style="font-size:12px;color:var(--text-secondary);margin:-4px 0 8px;min-height:16px;"></div>
     <div class="sort-bar">
       <button class="sort-btn active" id="sort-default" onclick="setSort('default')">기본순</button>
       <button class="sort-btn" id="sort-name" onclick="setSort('name')">가나다순</button>
@@ -279,13 +280,50 @@ function setIndex(i){
   document.querySelectorAll('.idx-btn').forEach(b=>b.classList.toggle('active',b.textContent.trim()===i));
   applyListFilter();
 }
+let _productSearchTimer=null;
 function applyListFilter(){
   const q=(document.getElementById('search-input')||{}).value||'';
+  const resultEl=document.getElementById('search-product-result');
+
+  // 이름/연락처로 먼저 필터
   let list=customers.filter(c=>c.name.includes(q)||(c.phone||'').includes(q));
+
+  // 2글자 이상이고 이름/연락처 결과가 없으면 상품명 검색 실행
+  if(q.length>=2&&list.length===0){
+    if(resultEl)resultEl.textContent='상품명 검색 중...';
+    clearTimeout(_productSearchTimer);
+    _productSearchTimer=setTimeout(()=>searchByProduct(q),400);
+    return;
+  }
+
+  // 이름/연락처 결과 있거나 검색어 짧으면 일반 필터
+  if(resultEl)resultEl.textContent='';
   if(currentIndex!=='전체')list=list.filter(c=>getNormInitial(getInitial(c.name))===currentIndex);
   if(currentSort==='name')list=[...list].sort((a,b)=>a.name.localeCompare(b.name,'ko'));
   else if(currentSort==='visit')list=[...list].sort((a,b)=>(b.last_visit||'').localeCompare(a.last_visit||''));
   else if(currentSort==='count')list=[...list].sort((a,b)=>b.visits-a.visits);
+  renderCustomerCards(list);
+}
+
+async function searchByProduct(q){
+  const resultEl=document.getElementById('search-product-result');
+  // purchases 테이블에서 해당 상품명 포함하는 구매내역의 customer_id 조회
+  const [{data:d1},{data:d2},{data:d3},{data:d4}]=await Promise.all([
+    sb.from('purchases').select('customer_id').ilike('frame_item','%'+q+'%'),
+    sb.from('purchases').select('customer_id').ilike('frame_item_b','%'+q+'%'),
+    sb.from('purchases').select('customer_id').ilike('lens_item','%'+q+'%'),
+    sb.from('purchases').select('customer_id').ilike('lens_item_b','%'+q+'%'),
+  ]);
+  const ids=new Set([...(d1||[]),...(d2||[]),...(d3||[]),...(d4||[])].map(r=>r.customer_id).filter(Boolean));
+  if(!ids.size){
+    if(resultEl)resultEl.textContent='검색 결과가 없습니다.';
+    renderCustomerCards([]);return;
+  }
+  const list=customers.filter(c=>ids.has(c.id));
+  if(resultEl){
+    resultEl.style.color='#FF2400';
+    resultEl.textContent=`"${q}" 구매 고객 ${list.length}명`;
+  }
   renderCustomerCards(list);
 }
 function renderCustomerCards(list){
