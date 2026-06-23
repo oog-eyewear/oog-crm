@@ -328,7 +328,7 @@ async function renderHome(){
   document.getElementById('main-content').innerHTML=`
     <div style="padding:20px var(--pad) 0;">
       <div style="font-size:13px;color:var(--text-secondary);margin-bottom:2px;">${dayStr}</div>
-      <div style="font-size:22px;font-weight:700;color:var(--text-primary);margin-bottom:14px;">안녕하세요 👋</div>
+      <div style="font-size:22px;font-weight:700;color:var(--text-primary);margin-bottom:20px;">안녕하세요 👋</div>
 
       <!-- 홈 고객 검색 -->
       <div style="position:relative;margin-bottom:20px;">
@@ -356,7 +356,6 @@ async function renderHome(){
       </div>
 
       <!-- 빠른 액션 -->
-      <div style="font-size:11px;color:var(--text-hint);font-weight:600;letter-spacing:0.06em;margin-bottom:10px;">빠른 액션</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;">
         <button onclick="switchMainTab('customers');setTimeout(showNewCustomerForm,100)" style="background:#FF2400;border:none;border-radius:12px;padding:16px;text-align:left;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
@@ -373,7 +372,7 @@ async function renderHome(){
         </button>
       </div>
       <!-- 최근 구매 내역 -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div style="font-size:11px;color:var(--text-hint);font-weight:600;letter-spacing:0.06em;">최근 구매</div>
       </div>
       <div style="margin-bottom:24px;">
