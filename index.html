@@ -26,7 +26,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .app-outer{min-height:100svh;background:#D0D0D0;display:flex;justify-content:center;}
 .app{display:flex;flex-direction:column;min-height:100svh;background:var(--bg);width:100%;max-width:640px;position:relative;box-shadow:0 0 40px rgba(0,0,0,0.12);}
 /* 하단 탭바 */
-.bottom-tab-bar{display:flex;background:var(--surface);border-top:0.5px solid var(--border);flex-shrink:0;padding-bottom:env(safe-area-inset-bottom);}
+.bottom-tab-bar{display:flex;background:var(--surface);border-top:0.5px solid var(--border);position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:640px;z-index:100;padding-bottom:env(safe-area-inset-bottom);}
+.content{padding-bottom:calc(60px + env(safe-area-inset-bottom))!important;}
 .btab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 0 6px;cursor:pointer;border:none;background:transparent;color:var(--text-hint);font-size:10px;font-weight:500;gap:3px;outline:none;-webkit-appearance:none;}
 .btab svg{transition:transform 0.15s;}
 .btab.active{color:#FF2400;}
