@@ -295,26 +295,6 @@ async function renderHome(){
           <span style="font-size:13px;font-weight:600;color:#1a1a1a;">매출 통계</span>
         </button>
       </div>
-
-      <!-- 연락 필요 고객 -->
-      ${alarms.length?`
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div style="font-size:11px;color:var(--text-hint);font-weight:600;letter-spacing:0.06em;">연락 필요</div>
-        <button onclick="switchMainTab('alarm')" style="font-size:12px;color:#FF2400;background:none;border:none;cursor:pointer;">전체보기</button>
-      </div>
-      <div style="margin-bottom:20px;">
-        ${alarms.slice(0,3).map(a=>`
-        <div style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:12px var(--pad);margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="openDetailFromAlarm('${a.cu.id}')">
-          <div class="avatar ${a.cu.gender==='female'?'female':''}">${a.cu.name[0]}</div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:14px;font-weight:500;">${a.cu.name}</div>
-            <div style="font-size:12px;color:var(--text-secondary);">최근방문 ${a.cu.last_visit} · ${a.diff}일 경과</div>
-          </div>
-          <span class="alarm-badge ${a.type}">${a.label}</span>
-        </div>`).join('')}
-        ${alarms.length>3?`<div style="font-size:12px;color:var(--text-hint);text-align:center;padding:4px 0;">+${alarms.length-3}명 더보기</div>`:''}
-      </div>`:''}
-
       <!-- 최근 구매 내역 -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <div style="font-size:11px;color:var(--text-hint);font-weight:600;letter-spacing:0.06em;">최근 구매</div>
