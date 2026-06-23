@@ -207,6 +207,76 @@ let currentPayMethod='card';
 let alarmFilter='all',alarmDoneSet=new Set();
 let statsTab='monthly';
 
+// ── 홈 검색 ──
+let _homeSearchTimer=null;
+function onHomeSearch(){
+  const q=document.getElementById('home-search')?.value||'';
+  const resultEl=document.getElementById('home-search-result');
+  if(!resultEl)return;
+  if(!q.trim()){resultEl.style.display='none';resultEl.innerHTML='';return;}
+  clearTimeout(_homeSearchTimer);
+  _homeSearchTimer=setTimeout(()=>doHomeSearch(q.trim()),200);
+}
+async function doHomeSearch(q){
+  const resultEl=document.getElementById('home-search-result');
+  if(!resultEl)return;
+  // 로컬 고객 목록에서 이름/연락처 검색
+  let list=customers.filter(c=>c.name.includes(q)||(c.phone||'').includes(q));
+  // 2글자 이상이고 결과 없으면 상품명으로도 검색
+  if(q.length>=2&&!list.length){
+    const [{data:d1},{data:d2},{data:d3},{data:d4}]=await Promise.all([
+      sb.from('purchases').select('customer_id').ilike('frame_item','%'+q+'%'),
+      sb.from('purchases').select('customer_id').ilike('frame_item_b','%'+q+'%'),
+      sb.from('purchases').select('customer_id').ilike('lens_item','%'+q+'%'),
+      sb.from('purchases').select('customer_id').ilike('lens_item_b','%'+q+'%'),
+    ]);
+    const ids=new Set([...(d1||[]),...(d2||[]),...(d3||[]),...(d4||[])].map(r=>r.customer_id).filter(Boolean));
+    list=customers.filter(c=>ids.has(c.id));
+  }
+  if(!list.length){
+    resultEl.style.display='block';
+    resultEl.innerHTML='<div style="padding:14px 16px;font-size:13px;color:var(--text-hint);text-align:center;">검색 결과가 없습니다.</div>';
+    return;
+  }
+  resultEl.style.display='block';
+  resultEl.innerHTML=list.slice(0,8).map(cu=>`
+    <div onclick="homeSearchSelect('${cu.id}')" style="display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;border-bottom:0.5px solid #F5F5F5;" onmouseover="this.style.background='#F9F9F9'" onmouseout="this.style.background=''">
+      <div class="avatar ${cu.gender==='female'?'female':''}" style="width:36px;height:36px;font-size:13px;">${cu.name[0]}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;font-weight:500;color:var(--text-primary);">${cu.name}</div>
+        <div style="font-size:12px;color:var(--text-secondary);">${cu.phone||'—'} · 방문 ${cu.visits||0}회</div>
+      </div>
+      <svg width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="#C0C0C0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>`).join('')+
+    (list.length>8?`<div style="padding:10px 16px;font-size:12px;color:var(--text-hint);text-align:center;">+${list.length-8}명 더 있음 — 고객 탭에서 검색하세요</div>`:'');
+}
+async function homeSearchSelect(id){
+  // 검색창 닫기
+  const resultEl=document.getElementById('home-search-result');
+  if(resultEl)resultEl.style.display='none';
+  const searchEl=document.getElementById('home-search');
+  if(searchEl)searchEl.value='';
+  // 고객 탭으로 이동 후 상세 열기
+  if(!customers.find(c=>c.id===id)){
+    const {data}=await sb.from('customers').select('*');
+    if(data)customers=data;
+  }
+  currentMainTab='customers';
+  ['home','customers','alarm','stats'].forEach(t=>{
+    const el=document.getElementById('btab-'+t);
+    if(el)el.classList.toggle('active',t==='customers');
+  });
+  await openDetail(id);
+}
+// 홈 검색창 외부 클릭 시 닫기
+document.addEventListener('click',(e)=>{
+  const wrap=document.querySelector('#home-search')?.closest('div[style*="position:relative"]');
+  const resultEl=document.getElementById('home-search-result');
+  if(resultEl&&wrap&&!wrap.contains(e.target)){
+    resultEl.style.display='none';
+  }
+});
+
 // ── 메인 탭 전환 ──
 let currentMainTab='home';
 function switchMainTab(tab){
@@ -258,7 +328,16 @@ async function renderHome(){
   document.getElementById('main-content').innerHTML=`
     <div style="padding:20px var(--pad) 0;">
       <div style="font-size:13px;color:var(--text-secondary);margin-bottom:2px;">${dayStr}</div>
-      <div style="font-size:22px;font-weight:700;color:var(--text-primary);margin-bottom:16px;">안녕하세요 👋</div>
+      <div style="font-size:22px;font-weight:700;color:var(--text-primary);margin-bottom:14px;">안녕하세요 👋</div>
+
+      <!-- 홈 고객 검색 -->
+      <div style="position:relative;margin-bottom:20px;">
+        <div style="position:relative;">
+          <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9b9b9b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input id="home-search" class="search-bar" placeholder="고객 이름 또는 연락처 검색..." oninput="onHomeSearch()" style="padding-left:36px;margin-bottom:0;" autocomplete="off">
+        </div>
+        <div id="home-search-result" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:0.5px solid var(--border);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.10);z-index:50;max-height:280px;overflow-y:auto;"></div>
+      </div>
 
       <!-- 오늘 요약 카드 -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;">
@@ -278,22 +357,19 @@ async function renderHome(){
 
       <!-- 빠른 액션 -->
       <div style="font-size:11px;color:var(--text-hint);font-weight:600;letter-spacing:0.06em;margin-bottom:10px;">빠른 액션</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
-        <button onclick="switchMainTab('customers');setTimeout(showNewCustomerForm,100)" style="background:#FF2400;border:none;border-radius:12px;padding:16px;text-align:left;cursor:pointer;display:flex;align-items:center;gap:10px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;">
+        <button onclick="switchMainTab('customers');setTimeout(showNewCustomerForm,100)" style="background:#FF2400;border:none;border-radius:12px;padding:16px;text-align:left;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-          <span style="font-size:13px;font-weight:600;color:#fff;">신규 고객</span>
+          <span style="font-size:12px;font-weight:600;color:#fff;">신규 고객</span>
         </button>
-        <button onclick="switchMainTab('customers')" style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:16px;text-align:left;cursor:pointer;display:flex;align-items:center;gap:10px;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <span style="font-size:13px;font-weight:600;color:#1a1a1a;">고객 검색</span>
-        </button>
-        <button onclick="showSettingsPage()" style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:16px;text-align:left;cursor:pointer;display:flex;align-items:center;gap:10px;">
+
+        <button onclick="showSettingsPage()" style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:16px;text-align:left;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          <span style="font-size:13px;font-weight:600;color:#1a1a1a;">설정</span>
+          <span style="font-size:12px;font-weight:600;color:#1a1a1a;">설정</span>
         </button>
-        <button onclick="switchMainTab('stats')" style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:16px;text-align:left;cursor:pointer;display:flex;align-items:center;gap:10px;">
+        <button onclick="switchMainTab('stats')" style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:16px;text-align:left;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-          <span style="font-size:13px;font-weight:600;color:#1a1a1a;">매출 통계</span>
+          <span style="font-size:12px;font-weight:600;color:#1a1a1a;">매출 통계</span>
         </button>
       </div>
       <!-- 최근 구매 내역 -->
