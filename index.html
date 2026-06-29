@@ -2706,93 +2706,130 @@ function renderProductStats(purchases){
 function downloadStatsExcel(){
   const purchases=_statsData.purchases||[];
   const cuMap=_statsData.cuMap||{};
-  let rows=[], sheetName='통계';
+  const today=new Date().toISOString().split('T')[0];
 
+  // ── 기간 필터링 ──
+  let filtered=[], periodLabel='', fileName='';
+  const now=new Date();
   if(statsTab==='monthly'){
-    sheetName='월별매출';
-    const map={};purchases.forEach(p=>{if(!p.date)return;const k=p.date.slice(0,7);map[k]=(map[k]||0)+parsePrice(p.final_price||p.price);});
-    rows=Object.keys(map).sort().reverse().map(m=>({'연월':m,'매출(원)':map[m]}));
+    const prefix=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    filtered=purchases.filter(p=>(p.date||'').startsWith(prefix));
+    periodLabel=prefix; fileName='OOG_월별_'+prefix;
   }else if(statsTab==='weekly'){
-    sheetName='주간매출';
-    const now=new Date();const weekMap={};
-    purchases.forEach(p=>{if(!p.date)return;const diff=Math.floor((now-new Date(p.date))/(7*24*60*60*1000));if(diff>=0&&diff<8){const lbl=diff===0?'이번 주':diff===1?'지난 주':diff+'주 전';weekMap[lbl]=(weekMap[lbl]||0)+parsePrice(p.final_price||p.price);}});
-    rows=Object.entries(weekMap).map(([k,v])=>({'기간':k,'매출(원)':v}));
+    filtered=purchases.filter(p=>{if(!p.date)return false;const diff=Math.floor((now-new Date(p.date))/(7*24*60*60*1000));return diff>=0&&diff<8;});
+    periodLabel='최근 8주'; fileName='OOG_주간_'+today;
   }else if(statsTab==='daily'){
-    sheetName='일별매출';
-    const now=new Date();const prefix=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
-    const map={};purchases.filter(p=>(p.date||'').startsWith(prefix)).forEach(p=>{const k=p.date.slice(0,10);map[k]=(map[k]||0)+parsePrice(p.final_price||p.price);});
-    rows=Object.keys(map).sort().reverse().map(d=>({'날짜':d,'매출(원)':map[d]}));
+    const prefix=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    filtered=purchases.filter(p=>(p.date||'').startsWith(prefix));
+    periodLabel=prefix+' 일별'; fileName='OOG_일별_'+prefix;
   }else if(statsTab==='yearly'){
-    sheetName='연도별매출';
-    const map={};purchases.forEach(p=>{if(!p.date)return;const k=p.date.slice(0,4);map[k]=(map[k]||0)+parsePrice(p.final_price||p.price);});
-    rows=Object.keys(map).sort().reverse().map(y=>({'연도':y,'매출(원)':map[y]}));
+    filtered=purchases.filter(p=>p.date);
+    periodLabel='전체'; fileName='OOG_연도별_'+today;
   }else if(statsTab==='period'){
-    sheetName='기간별판매';
-    const from=_periodFrom,to=_periodTo;
-    const filtered=purchases.filter(p=>p.date&&p.date>=from&&p.date<=to);
-    // 프레임 집계
-    const frameMap={};
-    filtered.forEach(p=>{
-      if(p.frame_item){frameMap[p.frame_item]=frameMap[p.frame_item]||{count:0};frameMap[p.frame_item].count+=1;}
-      if(p.frame_item_b){frameMap[p.frame_item_b]=frameMap[p.frame_item_b]||{count:0};frameMap[p.frame_item_b].count+=1;}
-    });
-    const lensMap={};
-    filtered.forEach(p=>{
-      if(p.lens_item){const q=parseFloat(p.lens_qty_a||1);lensMap[p.lens_item]=lensMap[p.lens_item]||{count:0};lensMap[p.lens_item].count+=q;}
-      if(p.lens_item_b){const q=parseFloat(p.lens_qty_b||1);lensMap[p.lens_item_b]=lensMap[p.lens_item_b]||{count:0};lensMap[p.lens_item_b].count+=q;}
-    });
-    const frameRows=Object.entries(frameMap).sort((a,b)=>b[1].count-a[1].count).map(([name,v])=>({'구분':'프레임','상품명':name,'판매수량':v.count}));
-    const lensRows=Object.entries(lensMap).sort((a,b)=>b[1].count-a[1].count).map(([name,v])=>({'구분':'렌즈','상품명':name,'판매수량':v.count}));
-    rows=[...frameRows,...lensRows];
-    const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),sheetName);
-    // 요약 시트
-    const totalAmt=filtered.reduce((s,p)=>s+parsePrice(p.final_price||p.price),0);
-    const summary=[{'기간':from+' ~ '+to,'판매건수':filtered.length,'총매출(원)':totalAmt}];
-    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(summary),'요약');
-    XLSX.writeFile(wb,'OOG_기간판매_'+from+'_'+to+'.xlsx');
-    return;
+    filtered=purchases.filter(p=>p.date&&p.date>=_periodFrom&&p.date<=_periodTo);
+    periodLabel=_periodFrom+' ~ '+_periodTo; fileName='OOG_기간_'+_periodFrom+'_'+_periodTo;
   }else if(statsTab==='ranking'){
-    sheetName='고객순위';
-    const cuTotal={};purchases.forEach(p=>{if(!p.customer_id)return;cuTotal[p.customer_id]=(cuTotal[p.customer_id]||0)+parsePrice(p.final_price||p.price);});
-    rows=Object.keys(cuTotal).map(id=>({id,total:cuTotal[id],cu:cuMap[id]||null})).sort((a,b)=>b.total-a.total)
-      .map((r,i)=>({'순위':i+1,'고객명':r.cu?r.cu.name:'알 수 없음','총구매금액(원)':r.total,'구매건수':purchases.filter(p=>p.customer_id===r.id).length}));
-  }else if(statsTab==='margin'){
-    sheetName='원가마진분석';
-    const purchases2=_statsData.purchases||[];
-    let filtered2=purchases2.filter(p=>p.date);
-    if(_marginSub==='daily'){const prefix=new Date().toISOString().slice(0,7);filtered2=filtered2.filter(p=>p.date.startsWith(prefix));}
-    else if(_marginSub==='period'){filtered2=filtered2.filter(p=>p.date>=_periodFrom&&p.date<=_periodTo);}
-    const groups2={};
-    filtered2.forEach(p=>{
-      const k=_marginSub==='daily'?p.date.slice(0,10):_marginSub==='yearly'?p.date.slice(0,4):_marginSub==='period'?p.date.slice(0,10):p.date.slice(0,7);
-      if(!groups2[k])groups2[k]={sales:0,cost:0,cnt:0};
-      groups2[k].sales+=parsePrice(p.final_price||p.price);
-      groups2[k].cost+=parsePrice(p.cost_total||0);
-      groups2[k].cnt+=1;
-    });
-    rows=Object.keys(groups2).sort().reverse().map(k=>{
-      const g=groups2[k];const margin=g.sales-g.cost;const rate=g.sales>0?Math.round(margin/g.sales*100):0;
-      return {'기간':k,'매출(원)':g.sales,'원가(원)':g.cost,'마진(원)':margin,'마진율(%)':rate,'판매건수':g.cnt};
-    });
+    filtered=purchases.filter(p=>p.date);
+    periodLabel='전체'; fileName='OOG_고객순위_'+today;
   }else if(statsTab==='products'){
-    sheetName='상품별판매';
-    const frameMap={},lensMap={};
-    purchases.forEach(p=>{
-      if(p.frame_item){frameMap[p.frame_item]=frameMap[p.frame_item]||{count:0,revenue:0};frameMap[p.frame_item].count+=1;frameMap[p.frame_item].revenue+=parsePrice(p.frame_price||0);}
-      if(p.frame_item_b){frameMap[p.frame_item_b]=frameMap[p.frame_item_b]||{count:0,revenue:0};frameMap[p.frame_item_b].count+=1;frameMap[p.frame_item_b].revenue+=parsePrice(p.frame_price_b||0);}
-      if(p.lens_item){const q=parseFloat(p.lens_qty_a||1);lensMap[p.lens_item]=lensMap[p.lens_item]||{count:0,revenue:0};lensMap[p.lens_item].count+=q;lensMap[p.lens_item].revenue+=parsePrice(p.lens_price||0)*q;}
-      if(p.lens_item_b){const q=parseFloat(p.lens_qty_b||1);lensMap[p.lens_item_b]=lensMap[p.lens_item_b]||{count:0,revenue:0};lensMap[p.lens_item_b].count+=q;lensMap[p.lens_item_b].revenue+=parsePrice(p.lens_price_b||0)*q;}
-    });
-    const fRows=Object.entries(frameMap).sort((a,b)=>b[1].count-a[1].count).map(([name,v])=>({'구분':'프레임','상품명':name,'판매수량':v.count,'매출(원)':v.revenue}));
-    const lRows=Object.entries(lensMap).sort((a,b)=>b[1].count-a[1].count).map(([name,v])=>({'구분':'렌즈','상품명':name,'판매수량':v.count%1===0?v.count:v.count.toFixed(1)+'조','매출(원)':v.revenue}));
-    rows=[...fRows,...lRows];
+    filtered=purchases.filter(p=>p.date);
+    periodLabel='전체'; fileName='OOG_상품별_'+today;
+  }else if(statsTab==='margin'){
+    filtered=purchases.filter(p=>p.date);
+    if(_marginSub==='daily'){const prefix=now.toISOString().slice(0,7);filtered=filtered.filter(p=>p.date.startsWith(prefix));}
+    else if(_marginSub==='period'){filtered=filtered.filter(p=>p.date>=_periodFrom&&p.date<=_periodTo);}
+    periodLabel='원가/마진'; fileName='OOG_마진_'+today;
   }
 
-  if(!rows.length){alert('다운로드할 데이터가 없습니다.');return;}
+  if(!filtered.length){alert('해당 기간에 데이터가 없습니다.');return;}
+
+  // ── 공통 헬퍼 ──
+  function getProductRows(list){
+    const fMap={},lMap={};
+    list.forEach(p=>{
+      if(p.frame_item){fMap[p.frame_item]=fMap[p.frame_item]||{count:0,revenue:0};fMap[p.frame_item].count+=1;fMap[p.frame_item].revenue+=parsePrice(p.frame_price||0);}
+      if(p.frame_item_b){fMap[p.frame_item_b]=fMap[p.frame_item_b]||{count:0,revenue:0};fMap[p.frame_item_b].count+=1;fMap[p.frame_item_b].revenue+=parsePrice(p.frame_price_b||0);}
+      if(p.lens_item){const q=parseFloat(p.lens_qty_a||1);lMap[p.lens_item]=lMap[p.lens_item]||{count:0,revenue:0};lMap[p.lens_item].count+=q;lMap[p.lens_item].revenue+=parsePrice(p.lens_price||0)*q;}
+      if(p.lens_item_b){const q=parseFloat(p.lens_qty_b||1);lMap[p.lens_item_b]=lMap[p.lens_item_b]||{count:0,revenue:0};lMap[p.lens_item_b].count+=q;lMap[p.lens_item_b].revenue+=parsePrice(p.lens_price_b||0)*q;}
+    });
+    const fRows=Object.entries(fMap).sort((a,b)=>b[1].count-a[1].count).map(([name,v])=>({'구분':'프레임','상품명':name,'판매수량':v.count,'매출(원)':v.revenue}));
+    const lRows=Object.entries(lMap).sort((a,b)=>b[1].count-a[1].count).map(([name,v])=>({'구분':'렌즈','상품명':name,'판매수량':v.count%1===0?v.count:parseFloat(v.count.toFixed(1)),'매출(원)':v.revenue}));
+    return [...fRows,...lRows];
+  }
+  function getCustomerRows(list){
+    return list.sort((a,b)=>a.date.localeCompare(b.date)).map(p=>{
+      const cu=cuMap[p.customer_id];
+      const items=[p.frame_item,p.frame_item_b,p.lens_item,p.lens_item_b].filter(Boolean).join(' / ')||p.item||'—';
+      const finalAmt=parsePrice(p.final_price||p.price);
+      const method=p.payment_method==='cash'?'현금':p.payment_method==='mixed'?'카드+현금':'카드';
+      return {
+        '구매일':p.date,
+        '고객명':cu?cu.name:'알 수 없음',
+        '구매 상품':items,
+        '결제금액(원)':finalAmt,
+        '결제수단':method,
+        '카드결제(원)':p.payment_method==='card'?finalAmt:p.payment_method==='mixed'?parsePrice(p.payment_card||0):0,
+        '현금결제(원)':p.payment_method==='cash'?finalAmt:p.payment_method==='mixed'?parsePrice(p.payment_cash||0):0,
+      };
+    });
+  }
+  function getPaySummaryRows(list, groupFn, labelFn){
+    const g={};
+    list.forEach(p=>{
+      const k=groupFn(p);if(!k)return;
+      if(!g[k])g[k]={sales:0,card:0,cash:0,cnt:0};
+      const amt=parsePrice(p.final_price||p.price);
+      g[k].sales+=amt;g[k].cnt+=1;
+      if(p.payment_method==='cash')g[k].cash+=amt;
+      else if(p.payment_method==='mixed'){g[k].card+=parsePrice(p.payment_card||0);g[k].cash+=parsePrice(p.payment_cash||0);}
+      else g[k].card+=amt;
+    });
+    return Object.keys(g).sort().reverse().map(k=>({
+      '기간':labelFn(k),'매출(원)':g[k].sales,'카드결제(원)':g[k].card,'현금결제(원)':g[k].cash,'판매건수':g[k].cnt
+    }));
+  }
+
   const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),sheetName);
-  XLSX.writeFile(wb,'OOG_'+sheetName+'_'+new Date().toISOString().split('T')[0]+'.xlsx');
+
+  // ── 시트 1: 매출 요약 ──
+  let summaryRows=[];
+  if(statsTab==='monthly'||statsTab==='daily'){
+    const groupFn=p=>statsTab==='daily'?p.date?.slice(0,10):p.date?.slice(0,7);
+    const labelFn=k=>k;
+    summaryRows=getPaySummaryRows(filtered,groupFn,labelFn);
+  }else if(statsTab==='weekly'){
+    summaryRows=getPaySummaryRows(filtered,p=>{const diff=Math.floor((now-new Date(p.date))/(7*24*60*60*1000));return diff>=0&&diff<8?diff+'':null;},k=>k==='0'?'이번 주':k==='1'?'지난 주':k+'주 전');
+  }else if(statsTab==='yearly'){
+    summaryRows=getPaySummaryRows(filtered,p=>p.date?.slice(0,4),k=>k+'년');
+  }else if(statsTab==='period'){
+    const total=filtered.reduce((s,p)=>s+parsePrice(p.final_price||p.price),0);
+    const card=filtered.reduce((s,p)=>p.payment_method==='cash'?s:p.payment_method==='mixed'?s+parsePrice(p.payment_card||0):s+parsePrice(p.final_price||p.price),0);
+    const cash=filtered.reduce((s,p)=>p.payment_method==='card'?s:p.payment_method==='mixed'?s+parsePrice(p.payment_cash||0):s+parsePrice(p.final_price||p.price),0);
+    summaryRows=[{'기간':periodLabel,'매출(원)':total,'카드결제(원)':card,'현금결제(원)':cash,'판매건수':filtered.length}];
+  }else if(statsTab==='ranking'){
+    const cuTotal={};filtered.forEach(p=>{if(!p.customer_id)return;cuTotal[p.customer_id]=(cuTotal[p.customer_id]||0)+parsePrice(p.final_price||p.price);});
+    summaryRows=Object.keys(cuTotal).map(id=>({id,total:cuTotal[id],cu:cuMap[id]||null})).sort((a,b)=>b.total-a.total)
+      .map((r,i)=>({'순위':i+1,'고객명':r.cu?r.cu.name:'알 수 없음','총구매금액(원)':r.total,'구매건수':filtered.filter(p=>p.customer_id===r.id).length}));
+  }else if(statsTab==='products'||statsTab==='margin'){
+    const total=filtered.reduce((s,p)=>s+parsePrice(p.final_price||p.price),0);
+    const card=filtered.reduce((s,p)=>p.payment_method==='cash'?s:p.payment_method==='mixed'?s+parsePrice(p.payment_card||0):s+parsePrice(p.final_price||p.price),0);
+    const cash=total-card;
+    summaryRows=[{'기간':periodLabel,'매출(원)':total,'카드결제(원)':card,'현금결제(원)':cash,'판매건수':filtered.length}];
+  }
+  if(summaryRows.length) XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(summaryRows),'매출요약');
+
+  // ── 시트 2: 상품별 판매 (ranking 제외) ──
+  if(statsTab!=='ranking'){
+    const productRows=getProductRows(filtered);
+    if(productRows.length) XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(productRows),'상품별판매');
+  }
+
+  // ── 시트 3: 고객 리스트 ──
+  const customerRows=getCustomerRows(filtered);
+  if(customerRows.length) XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(customerRows),'구매고객리스트');
+
+  if(wb.SheetNames.length===0){alert('다운로드할 데이터가 없습니다.');return;}
+  XLSX.writeFile(wb,fileName+'.xlsx');
 }
 
 async function openDetailFromStats(id){
