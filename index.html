@@ -215,7 +215,7 @@ function onHomeSearch(){
   if(!resultEl)return;
   if(!q.trim()){resultEl.style.display='none';resultEl.innerHTML='';return;}
   clearTimeout(_homeSearchTimer);
-  _homeSearchTimer=setTimeout(()=>doHomeSearch(q.trim()),200);
+  _homeSearchTimer=setTimeout(()=>doHomeSearch(q.trim()),150);
 }
 async function doHomeSearch(q){
   const resultEl=document.getElementById('home-search-result');
@@ -268,13 +268,14 @@ async function homeSearchSelect(id){
   });
   await openDetail(id);
 }
-// 홈 검색창 외부 클릭 시 닫기
-document.addEventListener('click',(e)=>{
-  const wrap=document.querySelector('#home-search')?.closest('div[style*="position:relative"]');
+// 홈 검색창 외부 클릭 시 닫기 (mousedown으로 처리해야 click 이전에 결과 선택 가능)
+document.addEventListener('mousedown',(e)=>{
+  const searchEl=document.getElementById('home-search');
   const resultEl=document.getElementById('home-search-result');
-  if(resultEl&&wrap&&!wrap.contains(e.target)){
-    resultEl.style.display='none';
-  }
+  if(!searchEl||!resultEl)return;
+  // 검색창이나 결과 영역 내부 클릭이면 닫지 않음
+  if(searchEl.contains(e.target)||resultEl.contains(e.target))return;
+  resultEl.style.display='none';
 });
 
 // ── 메인 탭 전환 ──
@@ -516,9 +517,13 @@ function setIndex(i){
   applyListFilter();
 }
 let _productSearchTimer=null;
+let _productSearchQuery=''; // 마지막 상품검색 쿼리 추적
 function applyListFilter(){
   const q=(document.getElementById('search-input')||{}).value||'';
   const resultEl=document.getElementById('search-product-result');
+
+  // 검색어가 바뀌면 상품검색 쿼리 초기화
+  if(q!==_productSearchQuery) _productSearchQuery='';
 
   // 이름/연락처로 먼저 필터
   let list=customers.filter(c=>c.name.includes(q)||(c.phone||'').includes(q));
@@ -542,13 +547,16 @@ function applyListFilter(){
 
 async function searchByProduct(q){
   const resultEl=document.getElementById('search-product-result');
-  // purchases 테이블에서 해당 상품명 포함하는 구매내역의 customer_id 조회
   const [{data:d1},{data:d2},{data:d3},{data:d4}]=await Promise.all([
     sb.from('purchases').select('customer_id').ilike('frame_item','%'+q+'%'),
     sb.from('purchases').select('customer_id').ilike('frame_item_b','%'+q+'%'),
     sb.from('purchases').select('customer_id').ilike('lens_item','%'+q+'%'),
     sb.from('purchases').select('customer_id').ilike('lens_item_b','%'+q+'%'),
   ]);
+  // DB 조회 완료 후 현재 검색어가 바뀌었으면 무시
+  const currentQ=(document.getElementById('search-input')||{}).value||'';
+  if(currentQ!==q)return;
+  _productSearchQuery=q;
   const ids=new Set([...(d1||[]),...(d2||[]),...(d3||[]),...(d4||[])].map(r=>r.customer_id).filter(Boolean));
   if(!ids.size){
     if(resultEl)resultEl.textContent='검색 결과가 없습니다.';
