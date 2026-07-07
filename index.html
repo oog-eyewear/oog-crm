@@ -442,7 +442,7 @@ function setNav(showBack,title,rightLabel,rightAction){
 }
 function goBack(){
   currentCustomer=null;showingDetail=false;currentTab=0;
-  // 고객 탭으로 돌아가기
+  _savingNewCustomer=false;
   ['home','customers','alarm','stats'].forEach(t=>{
     const el=document.getElementById('btab-'+t);
     if(el)el.classList.toggle('active',t==='customers');
@@ -464,7 +464,7 @@ async function renderList(){
   setNav(false,'','+ 신규',showNewCustomerForm);
   // nav-action-btn 직접 강제 설정
   const navBtn=document.getElementById('nav-action-btn');
-  if(navBtn){navBtn.textContent='+ 신규';navBtn.style.display='inline-flex';navBtn.onclick=showNewCustomerForm;}
+  if(navBtn){navBtn.disabled=false;navBtn.textContent='+ 신규';navBtn.style.display='inline-flex';navBtn.onclick=showNewCustomerForm;}
   document.getElementById('tab-bar').style.display='none';
   document.getElementById('main-content').innerHTML=`
     <input class="search-bar" placeholder="고객 이름, 연락처, 구매 상품명 검색..." oninput="applyListFilter()" id="search-input">
@@ -1727,12 +1727,17 @@ function copyMsg(){
 // 신규 고객 (저장 후 구매탭으로 이동)
 function showNewCustomerForm(){
   showingDetail=false;destroyCharts();
+  currentCustomer=null;
+  _savingNewCustomer=false;
   document.getElementById('tab-bar').style.display='none';
-  // nav 버튼 명시적 재설정
+  ['home','customers','alarm','stats'].forEach(t=>{
+    const el=document.getElementById('btab-'+t);
+    if(el)el.classList.toggle('active',t==='customers');
+  });
+  currentMainTab='customers';
   setNav(true,'신규 고객 등록','저장',saveNewCustomer);
-  // nav-action-btn 직접 강제 설정 (상태 꼬임 방지)
   const btn=document.getElementById('nav-action-btn');
-  if(btn){btn.textContent='저장';btn.style.display='inline-flex';btn.onclick=saveNewCustomer;}
+  if(btn){btn.disabled=false;btn.textContent='저장';btn.style.display='inline-flex';btn.onclick=saveNewCustomer;}
   document.getElementById('main-content').innerHTML=`
     <div class="card">
       <div class="form-row"><div class="form-label">고객명</div><input class="form-input" id="new-name" placeholder="홍길동"></div>
@@ -1775,6 +1780,11 @@ async function saveNewCustomer(){
     const area=document.getElementById('purchase-form-area');
     if(area&&area.innerHTML.trim().length===0) await showPurchaseForm(true);
   }, 150);
+  // 저장 완료 후 nav-action-btn 상태 정리 (다음 신규고객 등록 대비)
+  setTimeout(()=>{
+    const nb=document.getElementById('nav-action-btn');
+    if(nb){nb.disabled=false;}
+  }, 200);
 }
 
 // 설정 페이지
