@@ -3013,5 +3013,31 @@ async function openDetailFromStats(id){
 init();
 
 </script>
+<script>
+// Service Worker 등록
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('/oog-crm/sw.js')
+      .then(reg=>{
+        console.log('[OOG CRM] Service Worker 등록 완료');
+        // 새 버전 감지 시 사용자에게 알림 (강제 새로고침 없음)
+        reg.addEventListener('updatefound', ()=>{
+          const newWorker=reg.installing;
+          newWorker.addEventListener('statechange', ()=>{
+            if(newWorker.state==='installed'&&navigator.serviceWorker.controller){
+              // 작업 중 방해하지 않도록 알림만 표시
+              const bar=document.createElement('div');
+              bar.style.cssText='position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#1a1a1a;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,0.2);';
+              bar.innerHTML='새 버전이 있습니다. <button onclick="location.reload()" style="background:#FF2400;border:none;color:#fff;padding:4px 12px;border-radius:10px;font-size:12px;cursor:pointer;margin-left:4px;">지금 업데이트</button>';
+              document.body.appendChild(bar);
+              setTimeout(()=>bar.remove(), 10000);
+            }
+          });
+        });
+      })
+      .catch(err=>console.log('[OOG CRM] Service Worker 등록 실패:', err));
+  });
+}
+</script>
 </body>
 </html>
