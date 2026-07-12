@@ -280,6 +280,7 @@ document.addEventListener('mousedown',(e)=>{
 
 // ── 메인 탭 전환 ──
 let currentMainTab='home';
+let _detailFrom={tab:'customers', date:null}; // 고객 상세 진입 경로 추적
 function switchMainTab(tab){
   currentMainTab=tab;
   // 탭 버튼 활성화
@@ -381,7 +382,7 @@ async function renderHome(){
         ${(recentPurchases||[]).length?( recentPurchases.map(p=>{
           const cu=cuMap[p.customer_id];
           const finalP=parsePrice(p.final_price||p.price);
-          return `<div style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:12px var(--pad);margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="${cu?`openDetailFromStats('${p.customer_id}')`:'' }">
+          return `<div style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:12px var(--pad);margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="${cu?`homeOpenDetail('${p.customer_id}')`:'' }">
             <div class="avatar ${cu?.gender==='female'?'female':''}">${cu?cu.name[0]:'?'}</div>
             <div style="flex:1;min-width:0;">
               <div style="font-size:14px;font-weight:500;">${cu?cu.name:'알 수 없음'}</div>
@@ -443,12 +444,42 @@ function setNav(showBack,title,rightLabel,rightAction){
 function goBack(){
   currentCustomer=null;showingDetail=false;currentTab=0;
   _savingNewCustomer=false;
-  ['home','customers','alarm','stats'].forEach(t=>{
-    const el=document.getElementById('btab-'+t);
-    if(el)el.classList.toggle('active',t==='customers');
-  });
-  currentMainTab='customers';
-  renderList();
+  // 진입 경로에 따라 다르게 돌아가기
+  if(_detailFrom.tab==='stats'){
+    // 통계(달력)에서 진입한 경우 → 통계로 복귀
+    ['home','customers','alarm','stats'].forEach(t=>{
+      const el=document.getElementById('btab-'+t);
+      if(el)el.classList.toggle('active',t==='stats');
+    });
+    currentMainTab='stats';
+    // 달력 탭의 선택된 날짜 복원
+    if(_detailFrom.date){
+      statsTab='calendar';
+      _calSelectedDate=_detailFrom.date;
+      // 날짜에 맞는 월로 이동
+      const parts=_detailFrom.date.split('-');
+      _calYear=parseInt(parts[0]);
+      _calMonth=parseInt(parts[1])-1;
+    }
+    showStatsPage();
+  } else if(_detailFrom.tab==='home'){
+    // 홈에서 진입한 경우 → 홈으로 복귀
+    ['home','customers','alarm','stats'].forEach(t=>{
+      const el=document.getElementById('btab-'+t);
+      if(el)el.classList.toggle('active',t==='home');
+    });
+    currentMainTab='home';
+    renderHome();
+  } else {
+    // 고객 목록에서 진입한 경우 → 고객 목록으로 복귀
+    ['home','customers','alarm','stats'].forEach(t=>{
+      const el=document.getElementById('btab-'+t);
+      if(el)el.classList.toggle('active',t==='customers');
+    });
+    currentMainTab='customers';
+    renderList();
+  }
+  _detailFrom={tab:'customers', date:null};
 }
 function destroyCharts(){charts.forEach(c=>{try{c.destroy();}catch(e){}});charts=[];}
 function switchTab(t){
@@ -595,6 +626,7 @@ function renderCustomerCards(list){
 
 // 고객 상세
 async function openDetail(id){
+  _detailFrom={tab:'customers', date:null};
   currentCustomer=customers.find(c=>c.id===id);
   if(!currentCustomer)return;
   const [{data:exams},{data:purchases}]=await Promise.all([
@@ -2474,7 +2506,7 @@ function renderCalendar(purchases, cuMap){
         ${selPurchases.map(p=>{
           const cu=cuMap[p.customer_id];
           const items=[p.frame_item,p.frame_item_b,p.lens_item,p.lens_item_b].filter(Boolean).join(' / ')||p.item||'—';
-          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid #F5F5F5;cursor:pointer;" onclick="openDetailFromStats('${p.customer_id}')">
+          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid #F5F5F5;cursor:pointer;" onclick="openDetailFromStats('${p.customer_id}','${_calSelectedDate||''}')">
             <div class="avatar ${cu?.gender==='female'?'female':''}" style="width:32px;height:32px;font-size:12px;flex-shrink:0;">${cu?cu.name[0]:'?'}</div>
             <div style="flex:1;min-width:0;">
               <div style="font-size:13px;font-weight:500;">${cu?cu.name:'알 수 없음'}</div>
@@ -2995,7 +3027,12 @@ function downloadStatsExcel(){
   XLSX.writeFile(wb,fileName+'.xlsx');
 }
 
-async function openDetailFromStats(id){
+async function homeOpenDetail(id){
+  _detailFrom={tab:'home', date:null};
+  await openDetail(id);
+}
+async function openDetailFromStats(id, fromDate){
+  _detailFrom={tab:'stats', date:fromDate||_calSelectedDate||null};
   const {data:cuList}=await sb.from('customers').select('*');
   if(cuList)customers=cuList;
   currentCustomer=customers.find(c=>c.id===id);if(!currentCustomer)return;
