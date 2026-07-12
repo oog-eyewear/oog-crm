@@ -710,9 +710,104 @@ function renderInfoTab(cu){
       </div>
       <div class="chart-wrap"><canvas id="sphChart"></canvas></div>
     </div>`:''}
+    <div class="section-label" style="display:flex;align-items:center;justify-content:space-between;">
+      <span>관계</span>
+      <button class="edit-btn" onclick="showAddRelationForm('${cu.id}')">+ 추가</button>
+    </div>
+    <div id="relation-list-area">
+      <div class="spinner" style="padding:12px 0;"></div>
+    </div>
+    <div id="add-relation-area"></div>
     <div style="height:20px;"></div>`;
   if(cu.exams&&cu.exams.length>=2)setTimeout(()=>{drawSPHChart(cu);},100);
+  loadRelations(cu.id);
 }
+// ── 고객 관계 ──
+const RELATION_LABELS={'family':'👨‍👩‍👧 가족','intro':'👋 소개','friend':'🤝 지인'};
+
+async function loadRelations(customerId){
+  const area=document.getElementById('relation-list-area');
+  if(!area)return;
+  const {data,error}=await sb.from('customer_relations')
+    .select('*')
+    .or('customer_id_a.eq.'+customerId+',customer_id_b.eq.'+customerId);
+  if(error||!data||!data.length){
+    area.innerHTML='<div style="font-size:13px;color:var(--text-hint);padding:4px 0 8px;">등록된 관계가 없습니다.</div>';
+    return;
+  }
+  // 상대방 고객 ID 수집
+  const otherIds=data.map(r=>r.customer_id_a===customerId?r.customer_id_b:r.customer_id_a);
+  const {data:relCusts}=await sb.from('customers').select('id,name,gender,phone').in('id',otherIds);
+  const cuMap={};(relCusts||[]).forEach(c=>cuMap[c.id]=c);
+  area.innerHTML=`<div class="card" style="padding:8px 0;">
+    ${data.map(r=>{
+      const otherId=r.customer_id_a===customerId?r.customer_id_b:r.customer_id_a;
+      const other=cuMap[otherId];
+      return `<div style="display:flex;align-items:center;gap:10px;padding:10px var(--pad);border-bottom:0.5px solid #F5F5F5;">
+        <div class="avatar ${other?.gender==='female'?'female':''}" style="width:34px;height:34px;font-size:13px;cursor:pointer;" onclick="openDetail('${otherId}')">${other?other.name[0]:'?'}</div>
+        <div style="flex:1;min-width:0;cursor:pointer;" onclick="openDetail('${otherId}')">
+          <div style="font-size:14px;font-weight:500;">${other?other.name:'알 수 없음'}</div>
+          <div style="font-size:12px;color:var(--text-secondary);">${RELATION_LABELS[r.relation_type]||r.relation_type}</div>
+        </div>
+        <button onclick="deleteRelation('${r.id}','${customerId}')" style="background:none;border:none;font-size:18px;color:var(--text-hint);cursor:pointer;padding:0 4px;">×</button>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+async function showAddRelationForm(customerId){
+  const area=document.getElementById('add-relation-area');
+  if(!area)return;
+  if(area.innerHTML){area.innerHTML='';return;}
+  // 현재 고객 제외한 전체 고객 목록
+  const others=customers.filter(c=>c.id!==customerId);
+  area.innerHTML=`<div class="card" style="border:0.5px solid #FF2400;margin-bottom:12px;">
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px;">관계 추가</div>
+    <div class="form-row"><div class="form-label">고객</div>
+      <select class="form-input" id="rel-customer-select">
+        <option value="">고객 선택</option>
+        ${others.map(c=>`<option value="${c.id}">${c.name}${c.phone?' ('+c.phone+')':''}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row"><div class="form-label">관계</div>
+      <select class="form-input" id="rel-type-select">
+        <option value="family">👨‍👩‍👧 가족</option>
+        <option value="intro">👋 소개</option>
+        <option value="friend">🤝 지인</option>
+      </select>
+    </div>
+    <div id="rel-msg" style="font-size:12px;color:#FF2400;min-height:16px;"></div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="action-btn primary" onclick="saveRelation('${customerId}')" style="flex:1;margin-bottom:0;">저장</button>
+      <button class="action-btn" onclick="document.getElementById('add-relation-area').innerHTML=''" style="flex:1;margin-bottom:0;">취소</button>
+    </div>
+  </div>`;
+}
+
+async function saveRelation(customerId){
+  const otherId=document.getElementById('rel-customer-select')?.value;
+  const relType=document.getElementById('rel-type-select')?.value;
+  const msg=document.getElementById('rel-msg');
+  if(!otherId){if(msg)msg.textContent='고객을 선택해주세요.';return;}
+  // 중복 체크
+  const {data:existing}=await sb.from('customer_relations')
+    .select('id')
+    .or('and(customer_id_a.eq.'+customerId+',customer_id_b.eq.'+otherId+'),and(customer_id_a.eq.'+otherId+',customer_id_b.eq.'+customerId+')');
+  if(existing&&existing.length){if(msg)msg.textContent='이미 등록된 관계입니다.';return;}
+  const {error}=await sb.from('customer_relations').insert({
+    customer_id_a:customerId,customer_id_b:otherId,relation_type:relType
+  });
+  if(error){if(msg)msg.textContent='오류: '+error.message;return;}
+  document.getElementById('add-relation-area').innerHTML='';
+  loadRelations(customerId);
+}
+
+async function deleteRelation(relationId, customerId){
+  if(!confirm('이 관계를 삭제할까요?'))return;
+  const {error}=await sb.from('customer_relations').delete().eq('id',relationId);
+  if(!error)loadRelations(customerId);
+}
+
 function toggleInfoEdit(){
   const area=document.getElementById('info-edit-area');if(!area)return;
   if(area.innerHTML){area.innerHTML='';return;}
