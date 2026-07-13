@@ -2618,14 +2618,14 @@ function renderCalendar(purchases, cuMap){
     const isSun=((firstDay+d-1)%7===0);
     const isSat=((firstDay+d-1)%7===6);
     calCells+=`<div onclick="selectCalDate('${dateStr}')" style="
-      min-height:56px;padding:4px;border-radius:8px;cursor:pointer;
+      min-height:52px;max-height:52px;overflow:hidden;padding:3px;border-radius:8px;cursor:pointer;
       background:${isSelected?'#FF2400':isToday?'#FFF0EE':'#fff'};
       border:0.5px solid ${isSelected?'#FF2400':isToday?'#FFD5D0':'#EFEFEF'};
       position:relative;
     ">
-      <div style="font-size:12px;font-weight:${isToday?'700':'400'};color:${isSelected?'#fff':isSun?'#FF2400':isSat?'#4477FF':'#1a1a1a'};">${d}</div>
-      ${info?`<div style="font-size:9px;font-weight:600;color:${isSelected?'rgba(255,255,255,0.9)':'#FF2400'};margin-top:2px;line-height:1.3;">₩${formatPrice(info.sales)}</div>
-      <div style="font-size:9px;color:${isSelected?'rgba(255,255,255,0.7)':'var(--text-hint)'};">${info.cnt}건</div>`:''}
+      <div style="font-size:11px;font-weight:${isToday?'700':'400'};color:${isSelected?'#fff':isSun?'#FF2400':isSat?'#4477FF':'#1a1a1a'};">${d}</div>
+      ${info?`<div style="font-size:8px;font-weight:600;color:${isSelected?'rgba(255,255,255,0.9)':'#FF2400'};margin-top:2px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">₩${formatPrice(info.sales)}</div>
+      <div style="font-size:8px;color:${isSelected?'rgba(255,255,255,0.7)':'var(--text-hint)'};">${info.cnt}건</div>`:''}
     </div>`;
   }
 
