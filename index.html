@@ -199,13 +199,13 @@ const SUPABASE_KEY = 'sb_publishable__OXZln74j5DqGkOfJuQErA_R-QdaUR2';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentTab=0,currentCustomer=null,showingDetail=false,charts=[];
-let currentSort='default',currentIndex='전체';
+let currentSort='visit',currentIndex='전체';
 let customers=[],currentUser=null,products=[];
 let _statsData={purchases:[],cuMap:{}};
 let _savingNewCustomer=false;
 let currentPayMethod='card';
 let alarmFilter='all',alarmDoneSet=new Set();
-let statsTab='monthly';
+let statsTab='calendar';
 
 // ── 홈 검색 ──
 let _homeSearchTimer=null;
@@ -314,7 +314,7 @@ async function renderHome(){
     sb.from('customers').select('id,name,gender,phone,visits,last_visit').order('created_at',{ascending:true}),
     sb.from('purchases').select('final_price,price').eq('date',todayStr),
     sb.from('purchases').select('final_price,price').like('date',monthStr+'%'),
-    sb.from('purchases').select('*').order('date',{ascending:false}).limit(5),
+    sb.from('purchases').select('*').order('date',{ascending:false}).limit(50),
   ]);
   customers=cuList||[];
   try{await loadAlarmDone();}catch(e){}
@@ -327,6 +327,11 @@ async function renderHome(){
 
   // 최근 구매내역 고객명 매핑
   const cuMap={};customers.forEach(c=>{cuMap[c.id]=c;});
+
+  // 직전일 = 구매내역 중 가장 최근 날짜
+  const allDates=[...(recentPurchases||[])].map(p=>p.date).filter(Boolean);
+  const lastDate=allDates.length?allDates[0]:null;
+  const recentFiltered=lastDate?(recentPurchases||[]).filter(p=>p.date===lastDate):(recentPurchases||[]).slice(0,5);
 
   document.getElementById('main-content').innerHTML=`
     <div style="padding:20px var(--pad) 0;">
@@ -376,10 +381,10 @@ async function renderHome(){
       </div>
       <!-- 최근 구매 내역 -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div style="font-size:11px;color:var(--text-hint);font-weight:600;letter-spacing:0.06em;">최근 구매</div>
+        <div style="font-size:11px;color:var(--text-hint);font-weight:600;letter-spacing:0.06em;">최근 구매 ${lastDate?'('+lastDate+')':''}</div>
       </div>
       <div style="margin-bottom:24px;">
-        ${(recentPurchases||[]).length?( recentPurchases.map(p=>{
+        ${recentFiltered.length?( recentFiltered.map(p=>{
           const cu=cuMap[p.customer_id];
           const finalP=parsePrice(p.final_price||p.price);
           return `<div style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:12px var(--pad);margin-bottom:8px;display:flex;align-items:center;gap:12px;cursor:pointer;" onclick="${cu?`homeOpenDetail('${p.customer_id}')`:'' }">
