@@ -311,7 +311,7 @@ async function renderHome(){
 
   // 병렬 데이터 로드
   const [{data:cuList},{data:todayPurchases},{data:monthPurchases},{data:recentPurchases}]=await Promise.all([
-    sb.from('customers').select('id,name,gender,visits,last_visit').order('created_at',{ascending:true}),
+    sb.from('customers').select('id,name,gender,phone,visits,last_visit').order('created_at',{ascending:true}),
     sb.from('purchases').select('final_price,price').eq('date',todayStr),
     sb.from('purchases').select('final_price,price').like('date',monthStr+'%'),
     sb.from('purchases').select('*').order('date',{ascending:false}).limit(5),
@@ -446,22 +446,24 @@ function goBack(){
   _savingNewCustomer=false;
   // 진입 경로에 따라 다르게 돌아가기
   if(_detailFrom.tab==='stats'){
-    // 통계(달력)에서 진입한 경우 → 통계로 복귀
     ['home','customers','alarm','stats'].forEach(t=>{
       const el=document.getElementById('btab-'+t);
       if(el)el.classList.toggle('active',t==='stats');
     });
     currentMainTab='stats';
-    // 달력 탭의 선택된 날짜 복원
     if(_detailFrom.date){
       statsTab='calendar';
       _calSelectedDate=_detailFrom.date;
-      // 날짜에 맞는 월로 이동
       const parts=_detailFrom.date.split('-');
       _calYear=parseInt(parts[0]);
       _calMonth=parseInt(parts[1])-1;
     }
-    showStatsPage();
+    // _statsData가 있으면 바로 렌더, 없으면 새로 로드
+    if(_statsData&&_statsData.purchases&&_statsData.purchases.length){
+      renderStatsPage(_statsData.purchases,_statsData.cuMap);
+    } else {
+      showStatsPage();
+    }
   } else if(_detailFrom.tab==='home'){
     // 홈에서 진입한 경우 → 홈으로 복귀
     ['home','customers','alarm','stats'].forEach(t=>{
@@ -744,8 +746,8 @@ async function loadRelations(customerId){
       const otherId=r.customer_id_a===customerId?r.customer_id_b:r.customer_id_a;
       const other=cuMap[otherId];
       return `<div style="display:flex;align-items:center;gap:10px;padding:10px var(--pad);border-bottom:0.5px solid #F5F5F5;">
-        <div class="avatar ${other?.gender==='female'?'female':''}" style="width:34px;height:34px;font-size:13px;cursor:pointer;" onclick="openDetail('${otherId}')">${other?other.name[0]:'?'}</div>
-        <div style="flex:1;min-width:0;cursor:pointer;" onclick="openDetail('${otherId}')">
+        <div class="avatar ${other?.gender==='female'?'female':''}" style="width:34px;height:34px;font-size:13px;cursor:pointer;" onclick="openDetailKeepFrom('${otherId}')">${other?other.name[0]:'?'}</div>
+        <div style="flex:1;min-width:0;cursor:pointer;" onclick="openDetailKeepFrom('${otherId}')">
           <div style="font-size:14px;font-weight:500;">${other?other.name:'알 수 없음'}${other?.phone?` <span style="font-size:12px;color:var(--text-hint);font-weight:400;">(${other.phone.slice(-4)})</span>`:''}</div>
           <div style="font-size:12px;color:var(--text-secondary);">${RELATION_LABELS[r.relation_type]||r.relation_type}</div>
         </div>
@@ -2537,7 +2539,7 @@ async function showStatsPage(){
   document.getElementById('main-content').innerHTML='<div class="spinner"></div>';
   const [{data:purchases},{data:cuData}]=await Promise.all([
     sb.from('purchases').select('*').order('date',{ascending:true}),
-    sb.from('customers').select('id,name,gender').order('name')
+    sb.from('customers').select('id,name,gender,phone').order('name')
   ]);
   const cuMap={};(cuData||[]).forEach(c=>{cuMap[c.id]=c;});
   _statsData={purchases:purchases||[],cuMap};
@@ -3168,6 +3170,12 @@ function downloadStatsExcel(){
   XLSX.writeFile(wb,fileName+'.xlsx');
 }
 
+async function openDetailKeepFrom(id){
+  // _detailFrom 유지하면서 상세 이동 (관계 탭에서 다른 고객으로 이동 시)
+  await openDetail(id);
+  // openDetail이 _detailFrom을 customers로 바꾸므로 복원하지 않음
+  // → 뒤로가기 시 고객 목록으로 가는 게 자연스러움
+}
 async function homeOpenDetail(id){
   _detailFrom={tab:'home', date:null};
   await openDetail(id);
