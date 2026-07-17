@@ -1157,7 +1157,7 @@ function renderPurchaseTab(cu){
       const payLabel=p.payment_method==='cash'?'현금':p.payment_method==='mixed'?'카드+현금':'카드';
       return `
       <div style="display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px;">
-        <span class="section-label" style="margin:0;">${p.date}${ri===0?' &nbsp;<span class="tag blue">최근</span>':''}</span>
+        <span class="section-label" style="margin:0;">${p.date}${ri===0?' &nbsp;<span class="tag blue">최근</span>':''}${p.memo&&p.memo.startsWith('[환불]')?' &nbsp;<span style="font-size:10px;font-weight:600;background:#FFF0EE;color:#c41c00;padding:2px 7px;border-radius:99px;">환불</span>':p.memo&&p.memo.startsWith('[교환]')?' &nbsp;<span style="font-size:10px;font-weight:600;background:#FFF8E8;color:#7a4800;padding:2px 7px;border-radius:99px;">교환</span>':''}</span>
         <div style="display:flex;gap:6px;">
           <button class="edit-btn" onclick="showReturnForm(${realIdx},'${p.id}')" style="color:#7a4800;">환불/교환</button>
           <button class="edit-btn" onclick="showPurchaseEditForm(${realIdx})">수정</button>
@@ -2362,6 +2362,35 @@ async function saveReturn(idx, purchaseId){
     date
   });
   if(error){if(msg)msg.textContent='오류: '+error.message;return;}
+
+  // 환불 시 마이너스 구매내역 자동 등록
+  if(type==='refund'&&amount>0){
+    const origP=cu.purchases[idx];
+    // 환불 상품명
+    const refundItemNames=selectedItems.map(it=>it.name).filter(Boolean).join(' / ')||origP.item||'환불';
+    const refundPurchase={
+      customer_id:cu.id,
+      date,
+      item:'[환불] '+refundItemNames,
+      frame_item:selectedItems.find(it=>it.field==='frame')?.name||null,
+      frame_item_b:selectedItems.find(it=>it.field==='frame_b')?.name||null,
+      lens_item:selectedItems.find(it=>it.field==='lens')?.name||null,
+      lens_item_b:selectedItems.find(it=>it.field==='lens_b')?.name||null,
+      frame_price:-(selectedItems.find(it=>it.field==='frame')?.price||0),
+      frame_price_b:-(selectedItems.find(it=>it.field==='frame_b')?.price||0),
+      lens_price:-(selectedItems.find(it=>it.field==='lens')?.price||0),
+      lens_price_b:-(selectedItems.find(it=>it.field==='lens_b')?.price||0),
+      lens_qty_a:1,lens_qty_b:1,
+      price:String(-amount),
+      final_price:-amount,
+      discount_value:0,
+      cost_total:0,
+      payment_method:'refund',
+      memo:'[환불] '+refundItemNames+(reason?' / '+reason:''),
+    };
+    await sb.from('purchases').insert(refundPurchase);
+  }
+
   // 교환 시 구매내역 자동 등록
   if(type==='exchange'&&etoItems.length>0){
     const frameItems=etoItems.filter(it=>it.cat==='frame');
@@ -3096,7 +3125,10 @@ async function openDetailFromAlarm(id){
 // 유틸
 function parsePrice(str){
   if(!str||str==='—')return 0;
-  return parseInt(String(str).replace(/[^0-9]/g,''))||0;
+  const s=String(str).trim();
+  const neg=s.startsWith('-');
+  const val=parseInt(s.replace(/[^0-9]/g,''))||0;
+  return neg?-val:val;
 }
 function formatPrice(n){return Number(n).toLocaleString('ko-KR');}
 function formatChartTick(v){
