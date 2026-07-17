@@ -1170,6 +1170,7 @@ function renderPurchaseTab(cu){
           <span style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;${p._return.type==='refund'?'background:#FFF0EE;color:#c41c00;':'background:#FFF8E8;color:#7a4800;'}">${p._return.type==='refund'?'환불':'교환'} ${p._return.date||''}</span>
           ${p._return.type==='refund'&&p._return.refund_amount?`<span style="font-size:11px;color:#c41c00;margin-left:6px;">-₩${formatPrice(p._return.refund_amount)}</span>`:''}
           ${p._return.type==='exchange'&&p._return.exchange_diff?`<span style="font-size:11px;margin-left:6px;color:${p._return.exchange_diff>0?'#2d5a1b':'#c41c00'};">${p._return.exchange_diff>0?'+':''}₩${formatPrice(Math.abs(p._return.exchange_diff))}</span>`:''}
+          ${p._return.type==='exchange'&&(p._return.exchange_from||p._return.exchange_to)?`<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">${p._return.exchange_from||'?'} → ${p._return.exchange_to||'?'}</div>`:''}
         </div>`:''}
         ${p.frame_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item}</div>`:''}
             ${p.frame_item_b?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item_b}</div>`:''}
@@ -1890,6 +1891,16 @@ function showReturnForm(idx, purchaseId){
       <div class="form-label">환불 금액 (원)</div>
       <input class="form-input" type="number" id="return-amount-${idx}" placeholder="0" min="0">
     </div>
+    <div id="exchange-item-row-${idx}" style="display:none;margin-bottom:10px;">
+      <div class="form-label" style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">교환 상품</div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input class="form-input" id="return-from-${idx}" placeholder="기존 상품 (예: KJ-189 Matt Black)" style="flex:1;">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-hint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+        <input class="form-input" id="return-to-${idx}" placeholder="교환 상품 (예: KJ-189 Antique Gold)" style="flex:1;">
+      </div>
+    </div>
     <div id="exchange-diff-row-${idx}" style="display:none;margin-bottom:10px;">
       <div class="form-label" style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">차액 처리</div>
       <div style="display:flex;gap:8px;margin-bottom:8px;">
@@ -1928,6 +1939,8 @@ function setReturnType(idx, type){
   });
   const amtRow=document.getElementById('refund-amount-row-'+idx);
   if(amtRow)amtRow.style.display=type==='refund'?'block':'none';
+  const itemRow=document.getElementById('exchange-item-row-'+idx);
+  if(itemRow)itemRow.style.display=type==='exchange'?'block':'none';
   const diffRow=document.getElementById('exchange-diff-row-'+idx);
   if(diffRow)diffRow.style.display=type==='exchange'?'block':'none';
 }
@@ -1954,14 +1967,17 @@ async function saveReturn(idx, purchaseId){
   const cu=currentCustomer;
   const diffType=area?area._diffType:'none';
   const diffAmount=parseInt(document.getElementById('return-diff-'+idx)?.value||0)||0;
-  // 차액: 추가결제(+), 환급(-), 없음(0)
   const exchangeDiff=type==='exchange'&&diffType!=='none'?(diffType==='plus'?diffAmount:-diffAmount):0;
+  const fromItem=document.getElementById('return-from-'+idx)?.value.trim()||null;
+  const toItem=document.getElementById('return-to-'+idx)?.value.trim()||null;
   const {error}=await sb.from('returns').insert({
     purchase_id:purchaseId,
     customer_id:cu.id,
     type,
     refund_amount:type==='refund'?amount:0,
     exchange_diff:exchangeDiff,
+    exchange_from:fromItem,
+    exchange_to:toItem,
     reason:reason||null,
     date
   });
