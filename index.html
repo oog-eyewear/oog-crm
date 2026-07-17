@@ -1878,47 +1878,126 @@ function showReturnForm(idx, purchaseId){
   if(!area)return;
   if(area.innerHTML){area.innerHTML='';return;}
   const today=new Date().toISOString().split('T')[0];
+  // 현재 구매내역에서 상품 목록 추출
+  const cu=currentCustomer;
+  const p=cu.purchases[idx];
+  const items=[];
+  if(p.frame_item)items.push({label:'프레임: '+p.frame_item,name:p.frame_item,price:parsePrice(p.frame_price||0),field:'frame'});
+  if(p.frame_item_b)items.push({label:'프레임B: '+p.frame_item_b,name:p.frame_item_b,price:parsePrice(p.frame_price_b||0),field:'frame_b'});
+  if(p.lens_item)items.push({label:'렌즈: '+p.lens_item+(p.lens_qty_a&&p.lens_qty_a!=1?' '+p.lens_qty_a+'조':''),name:p.lens_item,price:parsePrice(p.lens_price||0),field:'lens'});
+  if(p.lens_item_b)items.push({label:'렌즈B: '+p.lens_item_b+(p.lens_qty_b&&p.lens_qty_b!=1?' '+p.lens_qty_b+'조':''),name:p.lens_item_b,price:parsePrice(p.lens_price_b||0),field:'lens_b'});
+
+  const frameBrands=[...new Set(products.filter(pr=>pr.category==='frame').map(pr=>pr.brand))];
+  const lensBrands=[...new Set(products.filter(pr=>pr.category==='lens').map(pr=>pr.brand))];
+  const fBrandOpts=frameBrands.map(b=>`<option value="${b}">${b}</option>`).join('');
+  const lBrandOpts=lensBrands.map(b=>`<option value="${b}">${b}</option>`).join('');
+
   area.innerHTML=`<div class="card" style="border:0.5px solid #e8a020;margin-bottom:8px;background:#FFFDF5;">
     <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:#7a4800;">환불 / 교환 처리</div>
-    <div class="form-row" style="margin-bottom:10px;">
+
+    <!-- 처리 유형 -->
+    <div class="form-row" style="margin-bottom:12px;">
       <div class="form-label">처리 유형</div>
       <div style="display:flex;gap:8px;">
         <button id="rtype-refund-${idx}" onclick="setReturnType(${idx},'refund')" class="pay-btn active" style="flex:1;">환불</button>
         <button id="rtype-exchange-${idx}" onclick="setReturnType(${idx},'exchange')" class="pay-btn" style="flex:1;">교환</button>
       </div>
     </div>
-    <div id="refund-amount-row-${idx}" class="form-row" style="margin-bottom:10px;">
-      <div class="form-label">환불 금액 (원)</div>
-      <input class="form-input" type="number" id="return-amount-${idx}" placeholder="0" min="0">
+
+    <!-- 대상 상품 선택 -->
+    <div style="font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:6px;">대상 상품 선택</div>
+    <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
+      ${items.map((it,i)=>`<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff;border:0.5px solid var(--border);border-radius:8px;cursor:pointer;">
+        <input type="checkbox" id="ret-item-${idx}-${i}" data-price="${it.price}" data-name="${it.name}" data-field="${it.field}" onchange="onReturnItemChange(${idx})" style="width:16px;height:16px;accent-color:#FF2400;">
+        <div style="flex:1;">
+          <div style="font-size:13px;font-weight:500;">${it.label}</div>
+          <div style="font-size:12px;color:var(--text-secondary);">₩${formatPrice(it.price)}</div>
+        </div>
+      </label>`).join('')}
     </div>
-    <div id="exchange-item-row-${idx}" style="display:none;margin-bottom:10px;">
-      <div class="form-label" style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">교환 상품</div>
-      <div style="display:flex;gap:6px;margin-bottom:6px;">
-        <input class="form-input" id="return-from-${idx}" placeholder="기존 상품 (예: KJ-189 Matt Black)" style="flex:1;">
+
+    <!-- 환불 금액 (환불 시) -->
+    <div id="refund-amount-row-${idx}" style="margin-bottom:12px;">
+      <div class="form-row">
+        <div class="form-label">환불 금액 (원)</div>
+        <input class="form-input" type="number" id="return-amount-${idx}" placeholder="0" min="0" oninput="updateReturnDiff(${idx})">
       </div>
-      <div style="display:flex;align-items:center;gap:6px;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-hint)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
-        <input class="form-input" id="return-to-${idx}" placeholder="교환 상품 (예: KJ-189 Antique Gold)" style="flex:1;">
+      <div style="font-size:11px;color:var(--text-hint);margin-top:4px;">※ 상품 선택 시 자동 입력됩니다.</div>
+    </div>
+
+    <!-- 교환 상품 입력 (교환 시) -->
+    <div id="exchange-item-row-${idx}" style="display:none;margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;">교환 받을 상품</div>
+      <!-- 교환 카테고리 선택 -->
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <button id="ecat-frame-${idx}" onclick="setExchangeCat(${idx},'frame')" class="pay-btn active" style="flex:1;">프레임</button>
+        <button id="ecat-lens-${idx}" onclick="setExchangeCat(${idx},'lens')" class="pay-btn" style="flex:1;">렌즈</button>
+      </div>
+      <!-- 프레임 선택 -->
+      <div id="eto-frame-${idx}">
+        <div class="form-grid" style="gap:8px;margin-bottom:6px;">
+          <div><div class="form-label">브랜드</div>
+            <select class="form-input" id="eto-fbrand-${idx}" onchange="onEtoFBrandChange(${idx})">
+              <option value="">직접입력</option>${fBrandOpts}
+            </select></div>
+          <div><div class="form-label">상품명</div>
+            <select class="form-input" id="eto-fname-${idx}" onchange="onEtoFNameChange(${idx})"><option value="">—</option></select></div>
+        </div>
+        <div class="form-grid" style="gap:8px;">
+          <div><div class="form-label">컬러/옵션</div>
+            <select class="form-input" id="eto-fopt-${idx}" onchange="onEtoFOptChange(${idx})"><option value="">—</option></select></div>
+          <div><div class="form-label">교환 상품 가격</div>
+            <input class="form-input" type="number" id="eto-fprice-${idx}" placeholder="0" oninput="updateReturnDiff(${idx})"></div>
+        </div>
+        <div id="eto-fcustom-row-${idx}" style="display:none;" class="form-row" style="margin-top:6px;">
+          <div class="form-label">직접 입력</div>
+          <input class="form-input" id="eto-fcustom-${idx}" placeholder="브랜드 상품명 컬러">
+        </div>
+      </div>
+      <!-- 렌즈 선택 -->
+      <div id="eto-lens-${idx}" style="display:none;">
+        <div class="form-grid" style="gap:8px;margin-bottom:6px;">
+          <div><div class="form-label">브랜드</div>
+            <select class="form-input" id="eto-lbrand-${idx}" onchange="onEtoLBrandChange(${idx})">
+              <option value="">직접입력</option>${lBrandOpts}
+            </select></div>
+          <div><div class="form-label">상품명</div>
+            <select class="form-input" id="eto-lname-${idx}" onchange="onEtoLNameChange(${idx})"><option value="">—</option></select></div>
+        </div>
+        <div class="form-grid" style="gap:8px;">
+          <div><div class="form-label">굴절률</div>
+            <select class="form-input" id="eto-lopt-${idx}" onchange="onEtoLOptChange(${idx})"><option value="">—</option></select></div>
+          <div><div class="form-label">교환 상품 가격</div>
+            <input class="form-input" type="number" id="eto-lprice-${idx}" placeholder="0" oninput="updateReturnDiff(${idx})"></div>
+        </div>
+        <div id="eto-lcustom-row-${idx}" style="display:none;" class="form-row" style="margin-top:6px;">
+          <div class="form-label">직접 입력</div>
+          <input class="form-input" id="eto-lcustom-${idx}" placeholder="브랜드 상품명 굴절률">
+        </div>
       </div>
     </div>
-    <div id="exchange-diff-row-${idx}" style="display:none;margin-bottom:10px;">
-      <div class="form-label" style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">차액 처리</div>
-      <div style="display:flex;gap:8px;margin-bottom:8px;">
-        <button id="ediff-plus-${idx}" onclick="setExchangeDiffType(${idx},'plus')" class="pay-btn active" style="flex:1;">추가 결제 (+)</button>
-        <button id="ediff-minus-${idx}" onclick="setExchangeDiffType(${idx},'minus')" class="pay-btn" style="flex:1;">차액 환급 (-)</button>
-        <button id="ediff-none-${idx}" onclick="setExchangeDiffType(${idx},'none')" class="pay-btn" style="flex:1;">차액 없음</button>
+
+    <!-- 차액 표시 -->
+    <div id="return-diff-display-${idx}" style="display:none;background:#F5F5F5;border-radius:8px;padding:10px 12px;margin-bottom:12px;">
+      <div style="display:flex;justify-content:space-between;font-size:13px;">
+        <span>기존 상품 금액</span><span id="rd-from-${idx}">₩0</span>
       </div>
-      <div id="exchange-diff-amount-row-${idx}">
-        <input class="form-input" type="number" id="return-diff-${idx}" placeholder="차액 금액 (원)" min="0">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:4px;">
+        <span>교환 상품 금액</span><span id="rd-to-${idx}">₩0</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:600;border-top:0.5px solid #D0D0D0;margin-top:8px;padding-top:8px;">
+        <span>차액</span><span id="rd-diff-${idx}" style="color:#FF2400;">₩0</span>
       </div>
     </div>
+
+    <!-- 날짜 / 사유 -->
     <div class="form-row" style="margin-bottom:10px;">
       <div class="form-label">날짜</div>
       <input class="form-input" type="date" id="return-date-${idx}" value="${today}">
     </div>
     <div class="form-row" style="margin-bottom:10px;">
       <div class="form-label">사유 (선택)</div>
-      <input class="form-input" id="return-reason-${idx}" placeholder="예: 렌즈 불량, 사이즈 교환 등">
+      <input class="form-input" id="return-reason-${idx}" placeholder="예: 렌즈 불량, 컬러 교환 등">
     </div>
     <div id="return-msg-${idx}" style="font-size:12px;color:#FF2400;min-height:16px;"></div>
     <div style="display:flex;gap:8px;margin-top:8px;">
@@ -1926,33 +2005,134 @@ function showReturnForm(idx, purchaseId){
       <button class="action-btn" onclick="document.getElementById('purchase-return-area-${idx}').innerHTML=''" style="flex:1;margin-bottom:0;">취소</button>
     </div>
   </div>`;
-  // 현재 returnType 상태 초기화
   area._returnType='refund';
+  area._exchangeCat='frame';
 }
 
 function setReturnType(idx, type){
   const area=document.getElementById('purchase-return-area-'+idx);
-  if(area){area._returnType=type;area._diffType='plus';}
+  if(area)area._returnType=type;
   ['refund','exchange'].forEach(t=>{
     const btn=document.getElementById('rtype-'+t+'-'+idx);
     if(btn)btn.classList.toggle('active',t===type);
   });
   const amtRow=document.getElementById('refund-amount-row-'+idx);
   if(amtRow)amtRow.style.display=type==='refund'?'block':'none';
-  const itemRow=document.getElementById('exchange-item-row-'+idx);
-  if(itemRow)itemRow.style.display=type==='exchange'?'block':'none';
-  const diffRow=document.getElementById('exchange-diff-row-'+idx);
-  if(diffRow)diffRow.style.display=type==='exchange'?'block':'none';
+  const exchRow=document.getElementById('exchange-item-row-'+idx);
+  if(exchRow)exchRow.style.display=type==='exchange'?'block':'none';
+  const diffDisp=document.getElementById('return-diff-display-'+idx);
+  if(diffDisp)diffDisp.style.display=type==='exchange'?'block':'none';
+  updateReturnDiff(idx);
 }
-function setExchangeDiffType(idx, diffType){
+function setExchangeCat(idx, cat){
   const area=document.getElementById('purchase-return-area-'+idx);
-  if(area)area._diffType=diffType;
-  ['plus','minus','none'].forEach(t=>{
-    const btn=document.getElementById('ediff-'+t+'-'+idx);
-    if(btn)btn.classList.toggle('active',t===diffType);
+  if(area)area._exchangeCat=cat;
+  ['frame','lens'].forEach(t=>{
+    const btn=document.getElementById('ecat-'+t+'-'+idx);
+    if(btn)btn.classList.toggle('active',t===cat);
   });
-  const amtRow=document.getElementById('exchange-diff-amount-row-'+idx);
-  if(amtRow)amtRow.style.display=diffType==='none'?'none':'block';
+  const frameDiv=document.getElementById('eto-frame-'+idx);
+  const lensDiv=document.getElementById('eto-lens-'+idx);
+  if(frameDiv)frameDiv.style.display=cat==='frame'?'block':'none';
+  if(lensDiv)lensDiv.style.display=cat==='lens'?'block':'none';
+  updateReturnDiff(idx);
+}
+function onReturnItemChange(idx){
+  // 환불 시 선택된 상품 금액 합산
+  let total=0;
+  document.querySelectorAll('[id^="ret-item-'+idx+'-"]').forEach(cb=>{
+    if(cb.checked)total+=parseInt(cb.dataset.price)||0;
+  });
+  const amtEl=document.getElementById('return-amount-'+idx);
+  if(amtEl)amtEl.value=total;
+  updateReturnDiff(idx);
+}
+function updateReturnDiff(idx){
+  const area=document.getElementById('purchase-return-area-'+idx);
+  const type=area?area._returnType:'refund';
+  const cat=area?area._exchangeCat:'frame';
+  if(type!=='exchange')return;
+  // 기존 상품 금액 (체크된 항목 합산)
+  let fromAmt=0;
+  document.querySelectorAll('[id^="ret-item-'+idx+'-"]').forEach(cb=>{
+    if(cb.checked)fromAmt+=parseInt(cb.dataset.price)||0;
+  });
+  // 교환 상품 금액
+  const toPrice=parseInt(document.getElementById(cat==='frame'?'eto-fprice-'+idx:'eto-lprice-'+idx)?.value||0)||0;
+  const diff=toPrice-fromAmt;
+  const fromEl=document.getElementById('rd-from-'+idx);
+  const toEl=document.getElementById('rd-to-'+idx);
+  const diffEl=document.getElementById('rd-diff-'+idx);
+  if(fromEl)fromEl.textContent='₩'+formatPrice(fromAmt);
+  if(toEl)toEl.textContent='₩'+formatPrice(toPrice);
+  if(diffEl){
+    diffEl.textContent=(diff>=0?'+':'')+formatPrice(diff)+'원';
+    diffEl.style.color=diff>0?'#2d5a1b':diff<0?'#c41c00':'#1a1a1a';
+  }
+}
+// 교환 상품 드롭다운 (프레임)
+function onEtoFBrandChange(idx){
+  const brand=document.getElementById('eto-fbrand-'+idx)?.value;
+  const nameEl=document.getElementById('eto-fname-'+idx);
+  const optEl=document.getElementById('eto-fopt-'+idx);
+  const cr=document.getElementById('eto-fcustom-row-'+idx);
+  if(!brand){if(cr)cr.style.display='block';nameEl.innerHTML='<option value="">—</option>';optEl.innerHTML='<option value="">—</option>';return;}
+  if(cr)cr.style.display='none';
+  const names=[...new Set(products.filter(p=>p.category==='frame'&&p.brand===brand).map(p=>p.name))];
+  nameEl.innerHTML='<option value="">선택</option>'+names.map(n=>`<option value="${n}">${n}</option>`).join('');
+  optEl.innerHTML='<option value="">—</option>';
+}
+function onEtoFNameChange(idx){
+  const brand=document.getElementById('eto-fbrand-'+idx)?.value;
+  const name=document.getElementById('eto-fname-'+idx)?.value;
+  const optEl=document.getElementById('eto-fopt-'+idx);
+  if(!name)return;
+  const matched=products.filter(p=>p.category==='frame'&&p.brand===brand&&p.name===name);
+  const opts=matched.map(p=>p.option).filter(Boolean);
+  optEl.innerHTML='<option value="">—</option>'+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
+  if(!opts.length&&matched.length&&matched[0].price){
+    const pr=document.getElementById('eto-fprice-'+idx);
+    if(pr){pr.value=matched[0].price;updateReturnDiff(idx);}
+  }
+}
+function onEtoFOptChange(idx){
+  const brand=document.getElementById('eto-fbrand-'+idx)?.value;
+  const name=document.getElementById('eto-fname-'+idx)?.value;
+  const opt=document.getElementById('eto-fopt-'+idx)?.value;
+  const matched=products.find(p=>p.category==='frame'&&p.brand===brand&&p.name===name&&p.option===opt);
+  if(matched?.price){const pr=document.getElementById('eto-fprice-'+idx);if(pr){pr.value=matched.price;updateReturnDiff(idx);}}
+}
+// 교환 상품 드롭다운 (렌즈)
+function onEtoLBrandChange(idx){
+  const brand=document.getElementById('eto-lbrand-'+idx)?.value;
+  const nameEl=document.getElementById('eto-lname-'+idx);
+  const optEl=document.getElementById('eto-lopt-'+idx);
+  const cr=document.getElementById('eto-lcustom-row-'+idx);
+  if(!brand){if(cr)cr.style.display='block';nameEl.innerHTML='<option value="">—</option>';optEl.innerHTML='<option value="">—</option>';return;}
+  if(cr)cr.style.display='none';
+  const names=[...new Set(products.filter(p=>p.category==='lens'&&p.brand===brand).map(p=>p.name))];
+  nameEl.innerHTML='<option value="">선택</option>'+names.map(n=>`<option value="${n}">${n}</option>`).join('');
+  optEl.innerHTML='<option value="">—</option>';
+}
+function onEtoLNameChange(idx){
+  const brand=document.getElementById('eto-lbrand-'+idx)?.value;
+  const name=document.getElementById('eto-lname-'+idx)?.value;
+  const optEl=document.getElementById('eto-lopt-'+idx);
+  if(!name)return;
+  const matched=products.filter(p=>p.category==='lens'&&p.brand===brand&&p.name===name);
+  const opts=matched.map(p=>p.option).filter(Boolean);
+  optEl.innerHTML='<option value="">—</option>'+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
+  if(!opts.length&&matched.length&&matched[0].price){
+    const pr=document.getElementById('eto-lprice-'+idx);
+    if(pr){pr.value=matched.price;updateReturnDiff(idx);}
+  }
+}
+function onEtoLOptChange(idx){
+  const brand=document.getElementById('eto-lbrand-'+idx)?.value;
+  const name=document.getElementById('eto-lname-'+idx)?.value;
+  const opt=document.getElementById('eto-lopt-'+idx)?.value;
+  const matched=products.find(p=>p.category==='lens'&&p.brand===brand&&p.name===name&&p.option===opt);
+  if(matched?.price){const pr=document.getElementById('eto-lprice-'+idx);if(pr){pr.value=matched.price;updateReturnDiff(idx);}}
 }
 
 async function saveReturn(idx, purchaseId){
@@ -1965,11 +2145,34 @@ async function saveReturn(idx, purchaseId){
   if(!date){if(msg)msg.textContent='날짜를 입력해주세요.';return;}
   if(type==='refund'&&amount<=0){if(msg)msg.textContent='환불 금액을 입력해주세요.';return;}
   const cu=currentCustomer;
-  const diffType=area?area._diffType:'none';
-  const diffAmount=parseInt(document.getElementById('return-diff-'+idx)?.value||0)||0;
-  const exchangeDiff=type==='exchange'&&diffType!=='none'?(diffType==='plus'?diffAmount:-diffAmount):0;
-  const fromItem=document.getElementById('return-from-'+idx)?.value.trim()||null;
-  const toItem=document.getElementById('return-to-'+idx)?.value.trim()||null;
+  const cat=area?area._exchangeCat:'frame';
+  // 대상 상품 (체크된 항목)
+  const selectedItems=[];
+  document.querySelectorAll('[id^="ret-item-'+idx+'-"]').forEach(cb=>{
+    if(cb.checked)selectedItems.push({name:cb.dataset.name,price:parseInt(cb.dataset.price)||0,field:cb.dataset.field});
+  });
+  const fromAmt=selectedItems.reduce((s,it)=>s+it.price,0);
+  const fromItem=selectedItems.map(it=>it.name).join(' / ')||null;
+  // 교환 상품
+  let toItem=null, toPrice=0;
+  if(type==='exchange'){
+    if(cat==='frame'){
+      const brand=document.getElementById('eto-fbrand-'+idx)?.value||'';
+      const name=document.getElementById('eto-fname-'+idx)?.value||'';
+      const opt=document.getElementById('eto-fopt-'+idx)?.value||'';
+      const custom=document.getElementById('eto-fcustom-'+idx)?.value||'';
+      toItem=brand?[brand,name,opt].filter(Boolean).join(' '):(custom||null);
+      toPrice=parseInt(document.getElementById('eto-fprice-'+idx)?.value||0)||0;
+    } else {
+      const brand=document.getElementById('eto-lbrand-'+idx)?.value||'';
+      const name=document.getElementById('eto-lname-'+idx)?.value||'';
+      const opt=document.getElementById('eto-lopt-'+idx)?.value||'';
+      const custom=document.getElementById('eto-lcustom-'+idx)?.value||'';
+      toItem=brand?[brand,name,opt].filter(Boolean).join(' '):(custom||null);
+      toPrice=parseInt(document.getElementById('eto-lprice-'+idx)?.value||0)||0;
+    }
+  }
+  const exchangeDiff=type==='exchange'?toPrice-fromAmt:0;
   const {error}=await sb.from('returns').insert({
     purchase_id:purchaseId,
     customer_id:cu.id,
