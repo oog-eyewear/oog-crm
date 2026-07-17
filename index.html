@@ -642,6 +642,7 @@ async function openDetail(id){
   ]);
   currentCustomer.exams=exams||[];
   currentCustomer.purchases=purchases||[];
+  await loadReturnsForPurchases(currentCustomer);
   currentTab=0;showingDetail=true;
   document.getElementById('tab-bar').style.display='flex';
   document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',i===0));
@@ -1157,12 +1158,20 @@ function renderPurchaseTab(cu){
       return `
       <div style="display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px;">
         <span class="section-label" style="margin:0;">${p.date}${ri===0?' &nbsp;<span class="tag blue">최근</span>':''}</span>
-        <button class="edit-btn" onclick="showPurchaseEditForm(${realIdx})">수정</button>
+        <div style="display:flex;gap:6px;">
+          <button class="edit-btn" onclick="showReturnForm(${realIdx},'${p.id}')" style="color:#7a4800;">환불/교환</button>
+          <button class="edit-btn" onclick="showPurchaseEditForm(${realIdx})">수정</button>
+        </div>
       </div>
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
           <div style="flex:1;">
-            ${p.frame_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item}</div>`:''}
+            ${p._return?`<div style="margin-bottom:6px;">
+          <span style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;${p._return.type==='refund'?'background:#FFF0EE;color:#c41c00;':'background:#FFF8E8;color:#7a4800;'}">${p._return.type==='refund'?'환불':'교환'} ${p._return.date||''}</span>
+          ${p._return.type==='refund'&&p._return.refund_amount?`<span style="font-size:11px;color:#c41c00;margin-left:6px;">-₩${formatPrice(p._return.refund_amount)}</span>`:''}
+          ${p._return.type==='exchange'&&p._return.exchange_diff?`<span style="font-size:11px;margin-left:6px;color:${p._return.exchange_diff>0?'#2d5a1b':'#c41c00'};">${p._return.exchange_diff>0?'+':''}₩${formatPrice(Math.abs(p._return.exchange_diff))}</span>`:''}
+        </div>`:''}
+        ${p.frame_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item}</div>`:''}
             ${p.frame_item_b?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item_b}</div>`:''}
             ${p.lens_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag green" style="margin-right:4px;">렌즈${p.lens_qty_a&&p.lens_qty_a!=1?' '+p.lens_qty_a+'조':''}</span>${p.lens_item}</div>`:''}
             ${p.lens_item_b?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag green" style="margin-right:4px;">렌즈${p.lens_qty_b&&p.lens_qty_b!=1?' '+p.lens_qty_b+'조':''}</span>${p.lens_item_b}</div>`:''}
@@ -1195,6 +1204,7 @@ function renderPurchaseTab(cu){
             })()}
         ${p.memo?`<div style="margin-top:6px;font-size:12px;color:var(--text-secondary);background:#F9F9F9;border-radius:6px;padding:6px 8px;line-height:1.5;">📝 ${p.memo}</div>`:''}
       </div>
+      <div id="purchase-return-area-${realIdx}"></div>
       <div id="purchase-edit-area-${realIdx}"></div>`;
     }).join('')
     :'<div style="font-size:13px;color:var(--text-hint);padding:12px 0;">구매 내역이 없습니다.</div>'}
@@ -1861,6 +1871,126 @@ async function savePurchaseEdit(idx){
   cu.purchases.sort((a,b)=>a.date.localeCompare(b.date));
   await updateVisitCount(cu);renderPurchaseTab(cu);
 }
+// ── 환불/교환 ──
+function showReturnForm(idx, purchaseId){
+  const area=document.getElementById('purchase-return-area-'+idx);
+  if(!area)return;
+  if(area.innerHTML){area.innerHTML='';return;}
+  const today=new Date().toISOString().split('T')[0];
+  area.innerHTML=`<div class="card" style="border:0.5px solid #e8a020;margin-bottom:8px;background:#FFFDF5;">
+    <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:#7a4800;">환불 / 교환 처리</div>
+    <div class="form-row" style="margin-bottom:10px;">
+      <div class="form-label">처리 유형</div>
+      <div style="display:flex;gap:8px;">
+        <button id="rtype-refund-${idx}" onclick="setReturnType(${idx},'refund')" class="pay-btn active" style="flex:1;">환불</button>
+        <button id="rtype-exchange-${idx}" onclick="setReturnType(${idx},'exchange')" class="pay-btn" style="flex:1;">교환</button>
+      </div>
+    </div>
+    <div id="refund-amount-row-${idx}" class="form-row" style="margin-bottom:10px;">
+      <div class="form-label">환불 금액 (원)</div>
+      <input class="form-input" type="number" id="return-amount-${idx}" placeholder="0" min="0">
+    </div>
+    <div id="exchange-diff-row-${idx}" style="display:none;margin-bottom:10px;">
+      <div class="form-label" style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">차액 처리</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <button id="ediff-plus-${idx}" onclick="setExchangeDiffType(${idx},'plus')" class="pay-btn active" style="flex:1;">추가 결제 (+)</button>
+        <button id="ediff-minus-${idx}" onclick="setExchangeDiffType(${idx},'minus')" class="pay-btn" style="flex:1;">차액 환급 (-)</button>
+        <button id="ediff-none-${idx}" onclick="setExchangeDiffType(${idx},'none')" class="pay-btn" style="flex:1;">차액 없음</button>
+      </div>
+      <div id="exchange-diff-amount-row-${idx}">
+        <input class="form-input" type="number" id="return-diff-${idx}" placeholder="차액 금액 (원)" min="0">
+      </div>
+    </div>
+    <div class="form-row" style="margin-bottom:10px;">
+      <div class="form-label">날짜</div>
+      <input class="form-input" type="date" id="return-date-${idx}" value="${today}">
+    </div>
+    <div class="form-row" style="margin-bottom:10px;">
+      <div class="form-label">사유 (선택)</div>
+      <input class="form-input" id="return-reason-${idx}" placeholder="예: 렌즈 불량, 사이즈 교환 등">
+    </div>
+    <div id="return-msg-${idx}" style="font-size:12px;color:#FF2400;min-height:16px;"></div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="action-btn primary" onclick="saveReturn(${idx},'${purchaseId}')" style="flex:1;margin-bottom:0;background:#e8a020;border-color:#e8a020;">저장</button>
+      <button class="action-btn" onclick="document.getElementById('purchase-return-area-${idx}').innerHTML=''" style="flex:1;margin-bottom:0;">취소</button>
+    </div>
+  </div>`;
+  // 현재 returnType 상태 초기화
+  area._returnType='refund';
+}
+
+function setReturnType(idx, type){
+  const area=document.getElementById('purchase-return-area-'+idx);
+  if(area){area._returnType=type;area._diffType='plus';}
+  ['refund','exchange'].forEach(t=>{
+    const btn=document.getElementById('rtype-'+t+'-'+idx);
+    if(btn)btn.classList.toggle('active',t===type);
+  });
+  const amtRow=document.getElementById('refund-amount-row-'+idx);
+  if(amtRow)amtRow.style.display=type==='refund'?'block':'none';
+  const diffRow=document.getElementById('exchange-diff-row-'+idx);
+  if(diffRow)diffRow.style.display=type==='exchange'?'block':'none';
+}
+function setExchangeDiffType(idx, diffType){
+  const area=document.getElementById('purchase-return-area-'+idx);
+  if(area)area._diffType=diffType;
+  ['plus','minus','none'].forEach(t=>{
+    const btn=document.getElementById('ediff-'+t+'-'+idx);
+    if(btn)btn.classList.toggle('active',t===diffType);
+  });
+  const amtRow=document.getElementById('exchange-diff-amount-row-'+idx);
+  if(amtRow)amtRow.style.display=diffType==='none'?'none':'block';
+}
+
+async function saveReturn(idx, purchaseId){
+  const area=document.getElementById('purchase-return-area-'+idx);
+  const type=area?area._returnType:'refund';
+  const amount=parseInt(document.getElementById('return-amount-'+idx)?.value||0)||0;
+  const date=document.getElementById('return-date-'+idx)?.value||'';
+  const reason=document.getElementById('return-reason-'+idx)?.value||'';
+  const msg=document.getElementById('return-msg-'+idx);
+  if(!date){if(msg)msg.textContent='날짜를 입력해주세요.';return;}
+  if(type==='refund'&&amount<=0){if(msg)msg.textContent='환불 금액을 입력해주세요.';return;}
+  const cu=currentCustomer;
+  const diffType=area?area._diffType:'none';
+  const diffAmount=parseInt(document.getElementById('return-diff-'+idx)?.value||0)||0;
+  // 차액: 추가결제(+), 환급(-), 없음(0)
+  const exchangeDiff=type==='exchange'&&diffType!=='none'?(diffType==='plus'?diffAmount:-diffAmount):0;
+  const {error}=await sb.from('returns').insert({
+    purchase_id:purchaseId,
+    customer_id:cu.id,
+    type,
+    refund_amount:type==='refund'?amount:0,
+    exchange_diff:exchangeDiff,
+    reason:reason||null,
+    date
+  });
+  if(error){if(msg)msg.textContent='오류: '+error.message;return;}
+  // 구매내역 새로고침
+  const {data:purchases}=await sb.from('purchases').select('*').eq('customer_id',cu.id).order('date',{ascending:false});
+  if(purchases){
+    cu.purchases=purchases;
+    await loadReturnsForPurchases(cu);
+  }
+  renderPurchaseTab(cu);
+}
+
+async function loadReturnsForPurchases(cu){
+  if(!cu.purchases||!cu.purchases.length)return;
+  const purchaseIds=cu.purchases.map(p=>p.id);
+  const {data:returns}=await sb.from('returns').select('*').in('purchase_id',purchaseIds);
+  if(!returns)return;
+  // 각 구매에 _return 연결
+  const returnMap={};
+  returns.forEach(r=>{
+    // 구매당 가장 최근 처리 기록
+    if(!returnMap[r.purchase_id]||r.created_at>returnMap[r.purchase_id].created_at){
+      returnMap[r.purchase_id]=r;
+    }
+  });
+  cu.purchases.forEach(p=>{p._return=returnMap[p.id]||null;});
+}
+
 async function deletePurchase(idx){
   if(!confirm('이 구매내역을 삭제할까요?'))return;
   const cu=currentCustomer;
@@ -2514,6 +2644,7 @@ async function openDetailFromAlarm(id){
     sb.from('purchases').select('*').eq('customer_id',id).order('date',{ascending:true})
   ]);
   currentCustomer.exams=exams||[];currentCustomer.purchases=purchases||[];
+  await loadReturnsForPurchases(currentCustomer);
   currentTab=3;showingDetail=true;
   document.getElementById('tab-bar').style.display='flex';
   document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',i===3));
@@ -3195,6 +3326,7 @@ async function openDetailFromStats(id, fromDate){
     sb.from('purchases').select('*').eq('customer_id',id).order('date',{ascending:true})
   ]);
   currentCustomer.exams=exams||[];currentCustomer.purchases=purchases||[];
+  await loadReturnsForPurchases(currentCustomer);
   currentTab=0;showingDetail=true;
   document.getElementById('tab-bar').style.display='flex';
   document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',i===0));
