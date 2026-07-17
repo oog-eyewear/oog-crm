@@ -2178,13 +2178,13 @@ function setExchangeCat(idx, cat){
   updateReturnDiff(idx);
 }
 function onReturnItemChange(idx){
-  // 환불 시 선택된 상품 금액 합산
   let total=0;
+  let anyChecked=false;
   document.querySelectorAll('[id^="ret-item-'+idx+'-"]').forEach(cb=>{
-    if(cb.checked)total+=parseInt(cb.dataset.price)||0;
+    if(cb.checked){total+=parseInt(cb.dataset.price)||0;anyChecked=true;}
   });
   const amtEl=document.getElementById('return-amount-'+idx);
-  if(amtEl)amtEl.value=total;
+  if(amtEl)amtEl.value=anyChecked?total:'';
   updateReturnDiff(idx);
 }
 function updateReturnDiff(idx){
@@ -2327,12 +2327,10 @@ function onEtoLOptChange(idx){
 async function saveReturn(idx, purchaseId){
   const area=document.getElementById('purchase-return-area-'+idx);
   const type=area?area._returnType:'refund';
-  const amount=parseInt(document.getElementById('return-amount-'+idx)?.value||0)||0;
   const date=document.getElementById('return-date-'+idx)?.value||'';
   const reason=document.getElementById('return-reason-'+idx)?.value||'';
   const msg=document.getElementById('return-msg-'+idx);
   if(!date){if(msg)msg.textContent='날짜를 입력해주세요.';return;}
-  if(type==='refund'&&amount<=0){if(msg)msg.textContent='환불 금액을 입력해주세요.';return;}
   const cu=currentCustomer;
   // 반납 상품 (체크된 항목)
   const selectedItems=[];
@@ -2340,6 +2338,11 @@ async function saveReturn(idx, purchaseId){
     if(cb.checked)selectedItems.push({name:cb.dataset.name,price:parseInt(cb.dataset.price)||0,field:cb.dataset.field});
   });
   const fromAmt=selectedItems.reduce((s,it)=>s+it.price,0);
+  // 환불 금액: 입력란 우선, 없으면 체크 항목 합산, 없으면 전체 결제금액
+  const inputAmount=parseInt(document.getElementById('return-amount-'+idx)?.value||0)||0;
+  const origP=cu.purchases[idx];
+  const amount=inputAmount>0?inputAmount:fromAmt>0?fromAmt:parsePrice(origP.final_price||origP.price);
+  if(type==='refund'&&amount<=0){if(msg)msg.textContent='환불 금액을 입력하거나 상품을 선택해주세요.';return;}
   const fromItem=selectedItems.map(it=>it.name).join(' / ')||null;
   // 교환/추가 상품
   const etoItems=type==='exchange'?getEtoItems(idx):[];
@@ -2365,7 +2368,6 @@ async function saveReturn(idx, purchaseId){
 
   // 환불 시 마이너스 구매내역 자동 등록
   if(type==='refund'&&amount>0){
-    const origP=cu.purchases[idx];
     // 환불 상품명
     const refundItemNames=selectedItems.map(it=>it.name).filter(Boolean).join(' / ')||origP.item||'환불';
     const refundPurchase={
@@ -2388,7 +2390,8 @@ async function saveReturn(idx, purchaseId){
       payment_method:'refund',
       memo:'[환불] '+refundItemNames+(reason?' / '+reason:''),
     };
-    await sb.from('purchases').insert(refundPurchase);
+    const {error:refErr}=await sb.from('purchases').insert(refundPurchase);
+    if(refErr){console.error('환불 구매내역 등록 오류:',refErr.message);}
   }
 
   // 교환 시 구매내역 자동 등록
