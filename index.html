@@ -1949,6 +1949,37 @@ function showReturnForm(idx, purchaseId){
       </div>
     </div>
 
+    <!-- 교환 상품 할인 (교환 시) -->
+    <div id="exchange-disc-row-${idx}" style="display:none;margin-bottom:12px;">
+      <div style="font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;">할인 적용 (선택)</div>
+      <div style="background:#FFF8F7;border:0.5px solid #FFD5D0;border-radius:8px;padding:10px 12px;margin-bottom:6px;">
+        <div style="font-size:12px;font-weight:500;color:#c41c00;margin-bottom:6px;">프레임 할인</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+          <div><div class="form-label">방식</div>
+            <select class="form-input" id="ret-disc-ft-${idx}" onchange="updateReturnTotal(${idx})">
+              <option value="percent">%</option><option value="amount">금액(원)</option>
+            </select></div>
+          <div><div class="form-label">할인 값</div>
+            <input class="form-input" type="number" placeholder="0" id="ret-disc-fv-${idx}" oninput="updateReturnTotal(${idx})"></div>
+          <div><div class="form-label">추가할인(원)</div>
+            <input class="form-input" type="number" placeholder="0" id="ret-disc-fex-${idx}" oninput="updateReturnTotal(${idx})"></div>
+        </div>
+      </div>
+      <div style="background:#F0F9F0;border:0.5px solid #C5E8C5;border-radius:8px;padding:10px 12px;">
+        <div style="font-size:12px;font-weight:500;color:#2d5a1b;margin-bottom:6px;">렌즈 할인</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+          <div><div class="form-label">방식</div>
+            <select class="form-input" id="ret-disc-lt-${idx}" onchange="updateReturnTotal(${idx})">
+              <option value="percent">%</option><option value="amount">금액(원)</option>
+            </select></div>
+          <div><div class="form-label">할인 값</div>
+            <input class="form-input" type="number" placeholder="0" id="ret-disc-lv-${idx}" oninput="updateReturnTotal(${idx})"></div>
+          <div><div class="form-label">추가할인(원)</div>
+            <input class="form-input" type="number" placeholder="0" id="ret-disc-lex-${idx}" oninput="updateReturnTotal(${idx})"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- 차액 결제 수단 (교환 시) -->
     <div id="exchange-pay-row-${idx}" style="display:none;margin-bottom:12px;">
       <div style="font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;">차액 결제 수단</div>
@@ -2179,13 +2210,54 @@ function updateReturnDiff(idx){
     diffEl.textContent=label;
     diffEl.style.color=diff>0?'#2d5a1b':diff<0?'#c41c00':'#1a1a1a';
   }
-  // 차액 결제수단 행 표시
+  // 할인 섹션 표시
+  const discRow=document.getElementById('exchange-disc-row-'+idx);
+  if(discRow)discRow.style.display=etoItems.length>0?'block':'none';
+  // 차액 결제수단 행은 updateReturnTotal에서 처리
+  updateReturnTotal(idx);
+}
+function updateReturnTotal(idx){
+  const area=document.getElementById('purchase-return-area-'+idx);
+  // 반납 금액
+  let fromAmt=0;
+  document.querySelectorAll('[id^="ret-item-'+idx+'-"]').forEach(cb=>{
+    if(cb.checked)fromAmt+=parseInt(cb.dataset.price)||0;
+  });
+  // 교환 상품 금액 (할인 전)
+  const etoItems=getEtoItems(idx);
+  const frameItems=etoItems.filter(it=>it.cat==='frame');
+  const lensItems=etoItems.filter(it=>it.cat==='lens');
+  const rawFrameAmt=frameItems.reduce((s,it)=>s+it.price,0);
+  const rawLensAmt=lensItems.reduce((s,it)=>s+it.price,0);
+  // 할인 계산
+  const dft=document.getElementById('ret-disc-ft-'+idx)?.value||'percent';
+  const dfv=parseInt(document.getElementById('ret-disc-fv-'+idx)?.value||0)||0;
+  const dfex=parseInt(document.getElementById('ret-disc-fex-'+idx)?.value||0)||0;
+  const frameDisc=(dfv>0?(dft==='percent'?Math.round(rawFrameAmt*dfv/100):dfv):0)+dfex;
+  const dlt=document.getElementById('ret-disc-lt-'+idx)?.value||'percent';
+  const dlv=parseInt(document.getElementById('ret-disc-lv-'+idx)?.value||0)||0;
+  const dlex=parseInt(document.getElementById('ret-disc-lex-'+idx)?.value||0)||0;
+  const lensDisc=(dlv>0?(dlt==='percent'?Math.round(rawLensAmt*dlv/100):dlv):0)+dlex;
+  const totalDisc=frameDisc+lensDisc;
+  const toAmt=rawFrameAmt+rawLensAmt-totalDisc;
+  const diff=toAmt-fromAmt;
+  // 표시 업데이트
+  const fromEl=document.getElementById('rd-from-'+idx);
+  const toEl=document.getElementById('rd-to-'+idx);
+  const diffEl=document.getElementById('rd-diff-'+idx);
+  if(fromEl)fromEl.textContent='₩'+formatPrice(fromAmt);
+  if(toEl)toEl.textContent='₩'+formatPrice(toAmt)+(totalDisc>0?' (-₩'+formatPrice(totalDisc)+')':'');
+  if(diffEl){
+    const label=diff>0?'+₩'+formatPrice(diff)+' 추가결제':diff<0?'-₩'+formatPrice(Math.abs(diff))+' 환급':'₩0 차액없음';
+    diffEl.textContent=label;
+    diffEl.style.color=diff>0?'#2d5a1b':diff<0?'#c41c00':'#1a1a1a';
+  }
+  // 차액 결제수단 행
   const payRow=document.getElementById('exchange-pay-row-'+idx);
   if(payRow)payRow.style.display=diff!==0?'block':'none';
-  // 환급이면 기본 결제수단을 '환급'으로
-  if(!area._retPayMethod||diff<0){
-    setRetPayMethod(idx,diff<0?'refund':'card');
-  }
+  if(!area._retPayMethod||diff<0)setRetPayMethod(idx,diff<0?'refund':'card');
+  // 차액 저장
+  if(area)area._exchangeDiff=diff;
 }
 // 교환 상품 드롭다운 (프레임)
 function onEtoFBrandChange(idx){
@@ -2290,10 +2362,26 @@ async function saveReturn(idx, purchaseId){
     date
   });
   if(error){if(msg)msg.textContent='오류: '+error.message;return;}
-  // 교환 시 추가 구매내역 자동 등록
+  // 교환 시 구매내역 자동 등록
   if(type==='exchange'&&etoItems.length>0){
     const frameItems=etoItems.filter(it=>it.cat==='frame');
     const lensItems=etoItems.filter(it=>it.cat==='lens');
+    const rawFrameAmt=frameItems.reduce((s,it)=>s+it.price,0);
+    const rawLensAmt=lensItems.reduce((s,it)=>s+it.price,0);
+    // 할인
+    const dft=document.getElementById('ret-disc-ft-'+idx)?.value||'percent';
+    const dfv=parseInt(document.getElementById('ret-disc-fv-'+idx)?.value||0)||0;
+    const dfex=parseInt(document.getElementById('ret-disc-fex-'+idx)?.value||0)||0;
+    const frameDisc=(dfv>0?(dft==='percent'?Math.round(rawFrameAmt*dfv/100):dfv):0)+dfex;
+    const dlt=document.getElementById('ret-disc-lt-'+idx)?.value||'percent';
+    const dlv=parseInt(document.getElementById('ret-disc-lv-'+idx)?.value||0)||0;
+    const dlex=parseInt(document.getElementById('ret-disc-lex-'+idx)?.value||0)||0;
+    const lensDisc=(dlv>0?(dlt==='percent'?Math.round(rawLensAmt*dlv/100):dlv):0)+dlex;
+    const totalDisc=frameDisc+lensDisc;
+    const finalAmt=Math.max(0,rawFrameAmt+rawLensAmt-totalDisc-fromAmt);
+    // 원가 계산
+    function findCostByName(name){if(!name)return 0;const pr=products.find(p=>[p.brand,p.name,p.option].filter(Boolean).join(' ')===name);return pr?.cost||0;}
+    const costTotal=frameItems.reduce((s,it)=>s+findCostByName(it.name),0)+lensItems.reduce((s,it)=>s+findCostByName(it.name),0);
     const newPurchase={
       customer_id:cu.id,
       date,
@@ -2307,17 +2395,18 @@ async function saveReturn(idx, purchaseId){
       lens_price:lensItems[0]?.price||0,
       lens_price_b:lensItems[1]?.price||0,
       lens_qty_a:1,lens_qty_b:1,
-      price:String(Math.max(0,exchangeDiff)),
-      final_price:Math.max(0,exchangeDiff),
-      discount_value:0,
-      payment_method:exchangeDiff<=0?'refund':(retPayMethod==='mixed'?'mixed':retPayMethod),
-      payment_card:retPayMethod==='card'?Math.max(0,exchangeDiff):retPayMethod==='mixed'?retCardAmt:0,
-      payment_cash:retPayMethod==='cash'?Math.max(0,exchangeDiff):retPayMethod==='mixed'?retCashAmt:0,
-      memo:'[교환] '+( fromItem?fromItem+' → ':'')+( toItemNames||'')+(reason?' / '+reason:''),
+      discount_frame_type:dfv?dft:null,discount_frame_value:dfv||0,discount_frame_extra:dfex||0,
+      discount_lens_type:dlv?dlt:null,discount_lens_value:dlv||0,discount_lens_extra:dlex||0,
+      discount_value:totalDisc,
+      price:String(finalAmt),
+      final_price:finalAmt,
+      cost_total:costTotal||0,
+      payment_method:finalAmt<=0?'none':(retPayMethod==='mixed'?'mixed':retPayMethod),
+      payment_card:retPayMethod==='card'?finalAmt:retPayMethod==='mixed'?retCardAmt:0,
+      payment_cash:retPayMethod==='cash'?finalAmt:retPayMethod==='mixed'?retCashAmt:0,
+      memo:'[교환] '+(fromItem?fromItem+' → ':'')+( toItemNames||'')+(reason?' / '+reason:''),
     };
-    if(exchangeDiff>0){
-      await sb.from('purchases').insert(newPurchase);
-    }
+    await sb.from('purchases').insert(newPurchase);
   }
   // 구매내역 새로고침
   const {data:purchases}=await sb.from('purchases').select('*').eq('customer_id',cu.id).order('date',{ascending:false});
