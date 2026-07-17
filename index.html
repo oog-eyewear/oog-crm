@@ -2387,7 +2387,7 @@ async function saveReturn(idx, purchaseId){
       final_price:-amount,
       discount_value:0,
       cost_total:0,
-      payment_method:'refund',
+      payment_method:'card',
       memo:'[환불] '+refundItemNames+(reason?' / '+reason:''),
     };
     const {error:refErr}=await sb.from('purchases').insert(refundPurchase);
@@ -2451,13 +2451,14 @@ async function saveReturn(idx, purchaseId){
 
 async function loadReturnsForPurchases(cu){
   if(!cu.purchases||!cu.purchases.length)return;
+  // 먼저 모두 null로 초기화
+  cu.purchases.forEach(p=>{p._return=null;});
   const purchaseIds=cu.purchases.map(p=>p.id);
   const {data:returns}=await sb.from('returns').select('*').in('purchase_id',purchaseIds);
-  if(!returns)return;
+  if(!returns||!returns.length)return;
   // 각 구매에 _return 연결
   const returnMap={};
   returns.forEach(r=>{
-    // 구매당 가장 최근 처리 기록
     if(!returnMap[r.purchase_id]||r.created_at>returnMap[r.purchase_id].created_at){
       returnMap[r.purchase_id]=r;
     }
