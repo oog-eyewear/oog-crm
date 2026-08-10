@@ -642,6 +642,7 @@ async function openDetail(id){
   ]);
   currentCustomer.exams=exams||[];
   currentCustomer.purchases=purchases||[];
+  await loadPurchaseItems(currentCustomer);
   await loadReturnsForPurchases(currentCustomer);
   currentTab=0;showingDetail=true;
   document.getElementById('tab-bar').style.display='flex';
@@ -1172,20 +1173,28 @@ function renderPurchaseTab(cu){
           ${p._return.type==='exchange'&&p._return.exchange_diff?`<span style="font-size:11px;margin-left:6px;color:${p._return.exchange_diff>0?'#2d5a1b':'#c41c00'};">${p._return.exchange_diff>0?'+':''}₩${formatPrice(Math.abs(p._return.exchange_diff))}</span>`:''}
           ${p._return.type==='exchange'&&(p._return.exchange_from||p._return.exchange_to)?`<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">${p._return.exchange_from||'?'} → ${p._return.exchange_to||'?'}</div>`:''}
         </div>`:''}
-        ${p.frame_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item}</div>`:''}
-            ${p.frame_item_b?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item_b}</div>`:''}
-            ${p.lens_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag green" style="margin-right:4px;">렌즈${p.lens_qty_a&&p.lens_qty_a!=1?' '+p.lens_qty_a+'조':''}</span>${p.lens_item}</div>`:''}
-            ${p.lens_item_b?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag green" style="margin-right:4px;">렌즈${p.lens_qty_b&&p.lens_qty_b!=1?' '+p.lens_qty_b+'조':''}</span>${p.lens_item_b}</div>`:''}
-            ${p.etc_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag amber" style="margin-right:4px;">기타</span>${p.etc_item}</div>`:''}
-            ${!p.frame_item&&!p.frame_item_b&&!p.lens_item&&!p.lens_item_b&&!p.etc_item?`<div style="font-size:14px;font-weight:500;">${p.item||'—'}</div>`:''}
+        ${p._items&&p._items.length?p._items.map(it=>{
+              const cat=it.category;
+              const tagCls=cat==='frame'?'blue':cat==='lens'?'green':'amber';
+              const tagLabel=cat==='frame'?'프레임':cat==='lens'?`렌즈${it.qty&&it.qty!=1?' '+it.qty+'조':''}`:'기타';
+              return `<div style="font-size:13px;margin-bottom:4px;"><span class="tag ${tagCls}" style="margin-right:4px;">${tagLabel}</span>${it.item_name||'—'}</div>`;
+            }).join(''):(
+              p.frame_item||p.frame_item_b||p.lens_item||p.lens_item_b?[
+                p.frame_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item}</div>`:'',
+                p.frame_item_b?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item_b}</div>`:'',
+                p.lens_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag green" style="margin-right:4px;">렌즈${p.lens_qty_a&&p.lens_qty_a!=1?' '+p.lens_qty_a+'조':''}</span>${p.lens_item}</div>`:'',
+                p.lens_item_b?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag green" style="margin-right:4px;">렌즈${p.lens_qty_b&&p.lens_qty_b!=1?' '+p.lens_qty_b+'조':''}</span>${p.lens_item_b}</div>`:'',
+              ].join(''):
+              `<div style="font-size:14px;font-weight:500;">${p.item||'—'}</div>`
+            )}
           </div>
           <span style="font-size:15px;font-weight:600;color:#FF2400;margin-left:12px;flex-shrink:0;">₩${formatPrice(finalP)}</span>
         </div>
         <div style="padding-top:8px;border-top:0.5px solid #EBEBEB;font-size:12px;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:8px;">
-          ${fp?`<span>프레임A ₩${formatPrice(fp)}</span>`:''}
-          ${p.frame_price_b?`<span>프레임B ₩${formatPrice(parsePrice(p.frame_price_b))}</span>`:''}
-          ${lp?`<span>렌즈${p.lens_qty_a&&p.lens_qty_a!=1?' '+p.lens_qty_a+'조':''} ₩${formatPrice(lp)}</span>`:''}
-          ${p.lens_price_b?`<span>렌즈B${p.lens_qty_b&&p.lens_qty_b!=1?' '+p.lens_qty_b+'조':''} ₩${formatPrice(parsePrice(p.lens_price_b))}</span>`:''}
+          ${p._items&&p._items.length?p._items.map(it=>{
+            const label=it.category==='frame'?'프레임':it.category==='lens'?`렌즈${it.qty&&it.qty!=1?' '+it.qty+'조':''}`:'기타';
+            return `<span>${label} ₩${formatPrice(it.price)}</span>`;
+          }).join(''):( fp?`<span>프레임A ₩${formatPrice(fp)}</span>`:'' )}
           ${p.discount_frame_value?`<span style="color:#FF2400;">프레임할인 ${p.discount_frame_type==='percent'?p.discount_frame_value+'%':'₩'+formatPrice(p.discount_frame_value)}</span>`:''}
           ${p.discount_lens_value?`<span style="color:#FF2400;">렌즈할인 ${p.discount_lens_type==='percent'?p.discount_lens_value+'%':'₩'+formatPrice(p.discount_lens_value)}</span>`:''}
           ${!p.discount_frame_value&&!p.discount_lens_value&&p.discount_value?`<span style="color:#FF2400;">할인 ₩${formatPrice(p.discount_value)}</span>`:''}
@@ -1671,6 +1680,16 @@ async function savePurchase(){
   if(btn){btn.disabled=true;btn.textContent='저장 중...';}
   const {data,error}=await sb.from('purchases').insert(newP).select().single();
   if(error){alert('저장 실패: '+error.message);if(btn){btn.disabled=false;btn.textContent='저장';}return;}
+  // purchase_items 저장
+  if(data){
+    const piRows=[];
+    frameItems.forEach((it,i)=>{if(it.name||it.price)piRows.push({purchase_id:data.id,category:'frame',item_name:it.name,price:it.price,qty:1,sort_order:i+1});});
+    lensItems.forEach((it,i)=>{if(it.name||it.price)piRows.push({purchase_id:data.id,category:'lens',item_name:it.name,price:it.price,qty:it.qty||1,sort_order:i+1});});
+    if(piRows.length){
+      await sb.from('purchase_items').insert(piRows);
+      data._items=piRows;
+    }
+  }
   cu.purchases.push(data);cu.purchases.sort((a,b)=>a.date.localeCompare(b.date));
   // 처방도수 입력 시 검안기록에도 자동 저장
   const pReSph=applyMinus(g('p-re-sph'));const pReCyl=applyCyl(g('p-re-cyl'));const pReAx=g('p-re-ax');
@@ -1698,12 +1717,24 @@ function showPurchaseEditForm(idx){
     <div class="card" style="margin-bottom:4px;border:0.5px solid #FF2400;">
       <div style="font-size:13px;font-weight:500;color:#FF2400;margin-bottom:12px;">구매내역 수정</div>
       <div class="form-row"><div class="form-label">구매일</div><input class="form-input" type="date" value="${p.date}" id="pe-date-${idx}"></div>
-      <div class="form-row"><div class="form-label">프레임 품목 <span style="font-size:10px;color:var(--text-hint);">(2개면 / 로 구분)</span></div><input class="form-input" value="${p.frame_item||p.item||''}" id="pe-frame-item-${idx}"></div>
-      <div class="form-row"><div class="form-label">렌즈 품목</div><input class="form-input" value="${p.lens_item||''}" id="pe-lens-item-${idx}"></div>
-      <div class="form-grid">
-        <div class="form-row"><div class="form-label">프레임 금액</div><input class="form-input" type="number" value="${p.frame_price||0}" id="pe-fp-${idx}" oninput="calcEditTotal(${idx})"></div>
-        <div class="form-row"><div class="form-label">렌즈 금액</div><input class="form-input" type="number" value="${p.lens_price||0}" id="pe-lp-${idx}" oninput="calcEditTotal(${idx})"></div>
+
+      <!-- 상품 목록 (동적) -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:10px 0 6px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">
+        <span style="font-size:13px;font-weight:600;">상품 목록</span>
       </div>
+      <div id="pe-items-wrap-${idx}">
+        ${(p._items&&p._items.length?p._items:[
+          ...(p.frame_item?[{category:'frame',item_name:p.frame_item,price:p.frame_price||0,qty:1}]:[]),
+          ...(p.frame_item_b?[{category:'frame',item_name:p.frame_item_b,price:p.frame_price_b||0,qty:1}]:[]),
+          ...(p.lens_item?[{category:'lens',item_name:p.lens_item,price:p.lens_price||0,qty:p.lens_qty_a||1}]:[]),
+          ...(p.lens_item_b?[{category:'lens',item_name:p.lens_item_b,price:p.lens_price_b||0,qty:p.lens_qty_b||1}]:[]),
+        ]).map((it,i)=>makeEditItemHtml(idx,i,it,frameBrands,lensBrands)).join('')}
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button type="button" onclick="addEditFrameItem(${idx})" style="flex:1;display:flex;align-items:center;justify-content:center;gap:4px;background:none;border:0.5px dashed #D0D0D0;border-radius:8px;padding:7px;font-size:12px;color:var(--text-secondary);cursor:pointer;">+ 프레임</button>
+        <button type="button" onclick="addEditLensItem(${idx})" style="flex:1;display:flex;align-items:center;justify-content:center;gap:4px;background:none;border:0.5px dashed #D0D0D0;border-radius:8px;padding:7px;font-size:12px;color:var(--text-secondary);cursor:pointer;">+ 렌즈</button>
+      </div>
+      <!-- calcEditTotal용 hidden (pe-fp, pe-lp는 동적으로 계산) -->
       <div style="background:#FFF8F7;border:0.5px solid #FFD5D0;border-radius:8px;padding:10px 12px;margin-bottom:8px;">
         <div style="font-size:12px;font-weight:500;color:#c41c00;margin-bottom:8px;">프레임 할인</div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
@@ -1799,9 +1830,130 @@ function getPePayMethod(idx){
   const ai=btns.findIndex(b=>b.classList.contains('active'));
   return methods[ai]||'card';
 }
+// ── 수정폼 상품 아이템 HTML ──
+let _editItemCount={};
+function makeEditItemHtml(idx, itemIdx, item, frameBrands, lensBrands){
+  const iFrame=item.category==='frame';
+  const fBrands=frameBrands||[...new Set(products.filter(p=>p.category==='frame').map(p=>p.brand))];
+  const lBrands=lensBrands||[...new Set(products.filter(p=>p.category==='lens').map(p=>p.brand))];
+  const fOpts=fBrands.map(b=>`<option value="${b}">${b}</option>`).join('');
+  const lOpts=lBrands.map(b=>`<option value="${b}">${b}</option>`).join('');
+  // 기존 item_name에서 브랜드/상품명/옵션 분리 시도
+  const nameParts=(item.item_name||'').split(' ');
+  return `<div id="pe-item-${idx}-${itemIdx}" style="background:#FAFAFA;border:0.5px solid #E0E0E0;border-radius:8px;padding:10px;margin-bottom:8px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <span style="font-size:12px;font-weight:500;color:${iFrame?'#3730a3':'#2d5a1b'};">${iFrame?'프레임':'렌즈'} ${itemIdx+1}</span>
+      <button type="button" onclick="removeEditItem(${idx},${itemIdx})" style="background:none;border:none;font-size:16px;color:var(--text-hint);cursor:pointer;">×</button>
+    </div>
+    ${iFrame?`
+    <div class="form-grid" style="gap:8px;margin-bottom:6px;">
+      <div><div class="form-label">브랜드</div>
+        <select class="form-input" id="pei-fbrand-${idx}-${itemIdx}" onchange="onEditItemChange(${idx},${itemIdx},'frame','brand')">
+          <option value="">직접입력</option>${fOpts}
+        </select></div>
+      <div><div class="form-label">상품명</div>
+        <select class="form-input" id="pei-fname-${idx}-${itemIdx}" onchange="onEditItemChange(${idx},${itemIdx},'frame','name')"><option value="">—</option></select></div>
+    </div>
+    <div class="form-grid" style="gap:8px;">
+      <div><div class="form-label">컬러</div>
+        <select class="form-input" id="pei-fopt-${idx}-${itemIdx}" onchange="onEditItemChange(${idx},${itemIdx},'frame','opt')"><option value="">—</option></select></div>
+      <div><div class="form-label">금액</div>
+        <input class="form-input" type="number" value="${item.price||0}" id="pei-fprice-${idx}-${itemIdx}" oninput="calcEditTotal(${idx})"></div>
+    </div>
+    <div class="form-row" style="margin-top:6px;"><div class="form-label">직접입력</div>
+      <input class="form-input" value="${item.item_name||''}" id="pei-fcustom-${idx}-${itemIdx}" placeholder="브랜드 상품명 컬러"></div>`:`
+    <div class="form-grid" style="gap:8px;margin-bottom:6px;">
+      <div><div class="form-label">브랜드</div>
+        <select class="form-input" id="pei-lbrand-${idx}-${itemIdx}" onchange="onEditItemChange(${idx},${itemIdx},'lens','brand')">
+          <option value="">직접입력</option>${lOpts}
+        </select></div>
+      <div><div class="form-label">상품명</div>
+        <select class="form-input" id="pei-lname-${idx}-${itemIdx}" onchange="onEditItemChange(${idx},${itemIdx},'lens','name')"><option value="">—</option></select></div>
+    </div>
+    <div class="form-grid" style="gap:8px;">
+      <div><div class="form-label">굴절률</div>
+        <select class="form-input" id="pei-lopt-${idx}-${itemIdx}" onchange="onEditItemChange(${idx},${itemIdx},'lens','opt')"><option value="">—</option></select></div>
+      <div><div class="form-label">금액</div>
+        <input class="form-input" type="number" value="${item.price||0}" id="pei-lprice-${idx}-${itemIdx}" oninput="calcEditTotal(${idx})"></div>
+    </div>
+    <div class="form-grid" style="gap:8px;margin-top:6px;">
+      <div><div class="form-label">수량(조)</div>
+        <input class="form-input" type="number" value="${item.qty||1}" id="pei-qty-${idx}-${itemIdx}" step="0.5" min="0.5" oninput="calcEditTotal(${idx})"></div>
+      <div></div>
+    </div>
+    <div class="form-row" style="margin-top:6px;"><div class="form-label">직접입력</div>
+      <input class="form-input" value="${item.item_name||''}" id="pei-lcustom-${idx}-${itemIdx}" placeholder="브랜드 상품명 굴절률"></div>`}
+  </div>`;
+}
+function onEditItemChange(idx, itemIdx, cat, field){
+  const pre='pei-'+(cat==='frame'?'f':'l');
+  const brand=document.getElementById(pre+'brand-'+idx+'-'+itemIdx)?.value||'';
+  const name=document.getElementById(pre+'name-'+idx+'-'+itemIdx)?.value||'';
+  const nameEl=document.getElementById(pre+'name-'+idx+'-'+itemIdx);
+  const optEl=document.getElementById(pre+'opt-'+idx+'-'+itemIdx);
+  const priceEl=document.getElementById(pre+'price-'+idx+'-'+itemIdx);
+  if(field==='brand'){
+    if(!brand)return;
+    const names=[...new Set(products.filter(p=>p.category===cat&&p.brand===brand).map(p=>p.name))];
+    if(nameEl)nameEl.innerHTML='<option value="">선택</option>'+names.map(n=>`<option value="${n}">${n}</option>`).join('');
+    if(optEl)optEl.innerHTML='<option value="">—</option>';
+  }else if(field==='name'){
+    const matched=products.filter(p=>p.category===cat&&p.brand===brand&&p.name===name);
+    const opts=matched.map(p=>p.option).filter(Boolean);
+    if(optEl)optEl.innerHTML='<option value="">—</option>'+opts.map(o=>`<option value="${o}">${o}</option>`).join('');
+    if(!opts.length&&matched.length&&matched[0].price&&priceEl){priceEl.value=matched[0].price;calcEditTotal(idx);}
+  }else if(field==='opt'){
+    const opt=document.getElementById(pre+'opt-'+idx+'-'+itemIdx)?.value||'';
+    const matched=products.find(p=>p.category===cat&&p.brand===brand&&p.name===name&&p.option===opt);
+    if(matched?.price&&priceEl){priceEl.value=matched.price;calcEditTotal(idx);}
+  }
+}
+function getEditItems(idx){
+  const items=[];
+  const wrap=document.getElementById('pe-items-wrap-'+idx);if(!wrap)return items;
+  [...wrap.children].forEach(el=>{
+    if(!el.id||!el.id.startsWith('pe-item-'+idx+'-'))return;
+    const parts=el.id.split('-');
+    const itemIdx=parts[parts.length-1];
+    // 프레임인지 렌즈인지 판단
+    const isFrm=!!document.getElementById('pei-fprice-'+idx+'-'+itemIdx);
+    const cat=isFrm?'frame':'lens';
+    const pre='pei-'+(isFrm?'f':'l');
+    const custom=document.getElementById(pre+'custom-'+idx+'-'+itemIdx)?.value.trim()||'';
+    const brand=document.getElementById(pre+'brand-'+idx+'-'+itemIdx)?.value||'';
+    const name=document.getElementById(pre+'name-'+idx+'-'+itemIdx)?.value||'';
+    const opt=document.getElementById(pre+'opt-'+idx+'-'+itemIdx)?.value||'';
+    const itemName=brand&&name?[brand,name,opt].filter(Boolean).join(' '):(custom||null);
+    const price=parseInt(document.getElementById(pre+'price-'+idx+'-'+itemIdx)?.value||0)||0;
+    const qty=parseFloat(document.getElementById('pei-qty-'+idx+'-'+itemIdx)?.value||1)||1;
+    items.push({category:cat,item_name:itemName,price,qty});
+  });
+  return items;
+}
+function addEditFrameItem(idx){
+  const wrap=document.getElementById('pe-items-wrap-'+idx);if(!wrap)return;
+  if(!_editItemCount[idx])_editItemCount[idx]=wrap.children.length;
+  const count=_editItemCount[idx]++;
+  const div=document.createElement('div');
+  div.innerHTML=makeEditItemHtml(idx,count,{category:'frame',item_name:'',price:0,qty:1});
+  wrap.appendChild(div.firstElementChild);
+}
+function addEditLensItem(idx){
+  const wrap=document.getElementById('pe-items-wrap-'+idx);if(!wrap)return;
+  if(!_editItemCount[idx])_editItemCount[idx]=wrap.children.length;
+  const count=_editItemCount[idx]++;
+  const div=document.createElement('div');
+  div.innerHTML=makeEditItemHtml(idx,count,{category:'lens',item_name:'',price:0,qty:1});
+  wrap.appendChild(div.firstElementChild);
+}
+function removeEditItem(idx,itemIdx){
+  const el=document.getElementById('pe-item-'+idx+'-'+itemIdx);
+  if(el){el.remove();calcEditTotal(idx);}
+}
 function calcEditTotal(idx){
-  const fp=parseInt(document.getElementById('pe-fp-'+idx)?.value||0)||0;
-  const lp=parseInt(document.getElementById('pe-lp-'+idx)?.value||0)||0;
+  const editItems=getEditItems(idx);
+  const fp=editItems.filter(it=>it.category==='frame').reduce((s,it)=>s+it.price,0);
+  const lp=editItems.filter(it=>it.category==='lens').reduce((s,it)=>s+(it.price*(it.qty||1)),0);
   const sub=fp+lp;
   const dft=document.getElementById('pe-dft-'+idx)?.value||'percent';
   const dfv=parseInt(document.getElementById('pe-dfv-'+idx)?.value||0)||0;
@@ -1820,8 +1972,11 @@ function calcEditTotal(idx){
 async function savePurchaseEdit(idx){
   const cu=currentCustomer;
   const g=id=>{const v=document.getElementById(id);return v?v.value||null:null;};
-  const fp=parseInt(g('pe-fp-'+idx)||0)||0;
-  const lp=parseInt(g('pe-lp-'+idx)||0)||0;
+  const editItems=getEditItems(idx);
+  const frameItems=editItems.filter(it=>it.category==='frame');
+  const lensItems=editItems.filter(it=>it.category==='lens');
+  const fp=frameItems.reduce((s,it)=>s+it.price,0);
+  const lp=lensItems.reduce((s,it)=>s+(it.price*(it.qty||1)),0);
   const sub=fp+lp;
   const dft=document.getElementById('pe-dft-'+idx)?.value||'percent';
   const dfv=parseInt(g('pe-dfv-'+idx)||0)||0;
@@ -1833,24 +1988,41 @@ async function savePurchaseEdit(idx){
   const lensDisc=(dlv>0?(dlt==='percent'?Math.round(lp*dlv/100):dlv):0)+dlex;
   const totalDisc=frameDisc+lensDisc;
   const final=Math.max(0,sub-totalDisc);
-  const fi=g('pe-frame-item-'+idx);const li=g('pe-lens-item-'+idx);
+  // 원가 계산
+  function findCost(name){if(!name)return 0;const pr=products.find(p=>[p.brand,p.name,p.option].filter(Boolean).join(' ')===name);return pr?.cost||0;}
+  const costTotal=editItems.reduce((s,it)=>s+findCost(it.item_name)*(it.qty||1),0);
+  // purchases 업데이트 (기존 컬럼 호환)
+  const fi=frameItems[0]?.item_name||null;
+  const fi_b=frameItems[1]?.item_name||null;
+  const li=lensItems[0]?.item_name||null;
+  const li_b=lensItems[1]?.item_name||null;
   const updates={
-    date:g('pe-date-'+idx),frame_item:fi,lens_item:li,
-    item:[fi,li].filter(Boolean).join(' / ')||'—',
-    frame_price:fp,lens_price:lp,memo:g('pe-memo-'+idx),
-    discount_frame_type:dfv?dft:null,discount_frame_value:dfv||0,
-    discount_frame_extra:dfex||0,
-    discount_lens_type:dlv?dlt:null,discount_lens_value:dlv||0,
-    discount_lens_extra:dlex||0,
+    date:g('pe-date-'+idx),
+    frame_item:fi,frame_item_b:fi_b||null,
+    lens_item:li,lens_item_b:li_b||null,
+    item:editItems.map(it=>it.item_name).filter(Boolean).join(' / ')||'—',
+    frame_price:frameItems[0]?.price||0,frame_price_b:frameItems[1]?.price||0,
+    lens_price:lensItems[0]?.price||0,lens_price_b:lensItems[1]?.price||0,
+    lens_qty_a:lensItems[0]?.qty||1,lens_qty_b:lensItems[1]?.qty||1,
+    memo:g('pe-memo-'+idx),
+    discount_frame_type:dfv?dft:null,discount_frame_value:dfv||0,discount_frame_extra:dfex||0,
+    discount_lens_type:dlv?dlt:null,discount_lens_value:dlv||0,discount_lens_extra:dlex||0,
     discount_value:totalDisc||0,
     final_price:final,price:String(final),
+    cost_total:costTotal||0,
     payment_method:getPePayMethod(idx),
     payment_card:getPePayMethod(idx)==='card'?final:getPePayMethod(idx)==='mixed'?(parseInt(g('pe-card-amt-'+idx)||0)||0):0,
     payment_cash:getPePayMethod(idx)==='cash'?final:getPePayMethod(idx)==='mixed'?(parseInt(g('pe-cash-amt-'+idx)||0)||0):0,
-    lens:g('pe-lens-'+idx)
   };
   const {error}=await sb.from('purchases').update(updates).eq('id',cu.purchases[idx].id);
   if(error){alert('저장 실패: '+error.message);return;}
+  // purchase_items 업데이트 (기존 삭제 후 재등록)
+  await sb.from('purchase_items').delete().eq('purchase_id',cu.purchases[idx].id);
+  if(editItems.length){
+    const piRows=editItems.map((it,i)=>({purchase_id:cu.purchases[idx].id,category:it.category,item_name:it.item_name,price:it.price,qty:it.qty||1,sort_order:i+1}));
+    await sb.from('purchase_items').insert(piRows);
+    updates._items=piRows;
+  }
   Object.assign(cu.purchases[idx],updates);
   // 처방도수 입력 시 검안기록에도 저장
   const reSph=applyMinus(g('pe-re-sph-'+idx));const reCyl=applyCyl(g('pe-re-cyl-'+idx));const reAx=g('pe-re-ax-'+idx);
@@ -1872,7 +2044,7 @@ async function savePurchaseEdit(idx){
   cu.purchases.sort((a,b)=>a.date.localeCompare(b.date));
   await updateVisitCount(cu);renderPurchaseTab(cu);
 }
-// ── 환불/교환 ──
+
 function showReturnForm(idx, purchaseId){
   const area=document.getElementById('purchase-return-area-'+idx);
   if(!area)return;
@@ -1880,11 +2052,23 @@ function showReturnForm(idx, purchaseId){
   const today=new Date().toISOString().split('T')[0];
   const cu=currentCustomer;
   const p=cu.purchases[idx];
-  const items=[];
-  if(p.frame_item)items.push({label:'프레임: '+p.frame_item,name:p.frame_item,price:parsePrice(p.frame_price||0),field:'frame'});
-  if(p.frame_item_b)items.push({label:'프레임B: '+p.frame_item_b,name:p.frame_item_b,price:parsePrice(p.frame_price_b||0),field:'frame_b'});
-  if(p.lens_item)items.push({label:'렌즈: '+p.lens_item+(p.lens_qty_a&&p.lens_qty_a!=1?' '+p.lens_qty_a+'조':''),name:p.lens_item,price:parsePrice(p.lens_price||0),field:'lens'});
-  if(p.lens_item_b)items.push({label:'렌즈B: '+p.lens_item_b+(p.lens_qty_b&&p.lens_qty_b!=1?' '+p.lens_qty_b+'조':''),name:p.lens_item_b,price:parsePrice(p.lens_price_b||0),field:'lens_b'});
+  // _items 우선, 없으면 기존 컬럼 fallback
+  const rawItems=p._items&&p._items.length?p._items:[
+    ...(p.frame_item?[{category:'frame',item_name:p.frame_item,price:parsePrice(p.frame_price||0),qty:1}]:[]),
+    ...(p.frame_item_b?[{category:'frame',item_name:p.frame_item_b,price:parsePrice(p.frame_price_b||0),qty:1}]:[]),
+    ...(p.lens_item?[{category:'lens',item_name:p.lens_item,price:parsePrice(p.lens_price||0),qty:p.lens_qty_a||1}]:[]),
+    ...(p.lens_item_b?[{category:'lens',item_name:p.lens_item_b,price:parsePrice(p.lens_price_b||0),qty:p.lens_qty_b||1}]:[]),
+  ];
+  const items=rawItems.map((it,i)=>({
+    label:(it.category==='frame'?'프레임':'렌즈')+': '+it.item_name+(it.qty&&it.qty!=1?' '+it.qty+'조':''),
+    name:it.item_name,
+    price:parsePrice(it.price)*(it.qty||1), // 수량 반영된 금액
+    unitPrice:parsePrice(it.price),
+    qty:it.qty||1,
+    field:it._field||it.category+'_'+i,
+    category:it.category
+  }));
+
   const frameBrands=[...new Set(products.filter(pr=>pr.category==='frame').map(pr=>pr.brand))];
   const lensBrands=[...new Set(products.filter(pr=>pr.category==='lens').map(pr=>pr.brand))];
   const fBrandOpts=frameBrands.map(b=>`<option value="${b}">${b}</option>`).join('');
@@ -2447,6 +2631,22 @@ async function saveReturn(idx, purchaseId){
     await loadReturnsForPurchases(cu);
   }
   renderPurchaseTab(cu);
+}
+
+async function loadPurchaseItems(cu){
+  if(!cu.purchases||!cu.purchases.length)return;
+  const purchaseIds=cu.purchases.map(p=>p.id);
+  const {data:items}=await sb.from('purchase_items')
+    .select('*').in('purchase_id',purchaseIds).order('sort_order',{ascending:true});
+  // 각 구매에 items 배열 연결
+  cu.purchases.forEach(p=>{p._items=[];});
+  if(!items||!items.length)return;
+  const itemMap={};
+  items.forEach(it=>{
+    if(!itemMap[it.purchase_id])itemMap[it.purchase_id]=[];
+    itemMap[it.purchase_id].push(it);
+  });
+  cu.purchases.forEach(p=>{p._items=itemMap[p.id]||[];});
 }
 
 async function loadReturnsForPurchases(cu){
@@ -3119,6 +3319,7 @@ async function openDetailFromAlarm(id){
     sb.from('purchases').select('*').eq('customer_id',id).order('date',{ascending:true})
   ]);
   currentCustomer.exams=exams||[];currentCustomer.purchases=purchases||[];
+  await loadPurchaseItems(currentCustomer);
   await loadReturnsForPurchases(currentCustomer);
   currentTab=3;showingDetail=true;
   document.getElementById('tab-bar').style.display='flex';
@@ -3804,6 +4005,7 @@ async function openDetailFromStats(id, fromDate){
     sb.from('purchases').select('*').eq('customer_id',id).order('date',{ascending:true})
   ]);
   currentCustomer.exams=exams||[];currentCustomer.purchases=purchases||[];
+  await loadPurchaseItems(currentCustomer);
   await loadReturnsForPurchases(currentCustomer);
   currentTab=0;showingDetail=true;
   document.getElementById('tab-bar').style.display='flex';
