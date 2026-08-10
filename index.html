@@ -1713,6 +1713,11 @@ function showPurchaseEditForm(idx){
   const cu=currentCustomer;const p=cu.purchases[idx];
   const area=document.getElementById('purchase-edit-area-'+idx);if(!area)return;
   if(area.innerHTML){area.innerHTML='';return;}
+  const frameBrands=[...new Set(products.filter(pr=>pr.category==='frame').map(pr=>pr.brand))];
+  const lensBrands=[...new Set(products.filter(pr=>pr.category==='lens').map(pr=>pr.brand))];
+  _editItemCount[idx]=(p._items&&p._items.length?p._items:[
+    ...(p.frame_item?[1]:[]),...(p.frame_item_b?[1]:[]),...(p.lens_item?[1]:[]),...(p.lens_item_b?[1]:[])
+  ]).length;
   area.innerHTML=`
     <div class="card" style="margin-bottom:4px;border:0.5px solid #FF2400;">
       <div style="font-size:13px;font-weight:500;color:#FF2400;margin-bottom:12px;">구매내역 수정</div>
