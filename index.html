@@ -2583,7 +2583,31 @@ async function saveReturn(idx, purchaseId){
     if(refErr){console.error('환불 구매내역 등록 오류:',refErr.message);}
   }
 
-  // 교환 시 구매내역 자동 등록
+  // 교환 시 반납 상품 마이너스 구매내역 등록
+  if(type==='exchange'&&fromAmt>0&&selectedItems.length>0){
+    const returnItemNames=selectedItems.map(it=>it.name).filter(Boolean).join(' / ')||'교환반납';
+    const returnPurchase={
+      customer_id:cu.id,
+      date,
+      item:'[교환반납] '+returnItemNames,
+      frame_item:selectedItems.find(it=>it.category==='frame'||it.field==='frame')?.name||null,
+      frame_item_b:selectedItems.filter(it=>it.category==='frame'||it.field?.startsWith('frame'))[1]?.name||null,
+      lens_item:selectedItems.find(it=>it.category==='lens'||it.field==='lens')?.name||null,
+      lens_item_b:selectedItems.filter(it=>it.category==='lens'||it.field?.startsWith('lens'))[1]?.name||null,
+      frame_price:-(selectedItems.filter(it=>it.category==='frame'||it.field?.startsWith('frame'))[0]?.unitPrice||selectedItems.filter(it=>it.category==='frame'||it.field?.startsWith('frame'))[0]?.price||0),
+      lens_price:-(selectedItems.filter(it=>it.category==='lens'||it.field?.startsWith('lens'))[0]?.unitPrice||selectedItems.filter(it=>it.category==='lens'||it.field?.startsWith('lens'))[0]?.price||0),
+      lens_qty_a:1,lens_qty_b:1,
+      price:String(-fromAmt),
+      final_price:-fromAmt,
+      discount_value:0,cost_total:0,
+      payment_method:'card',
+      memo:'[교환반납] '+returnItemNames+(reason?' / '+reason:''),
+    };
+    const {error:retErr}=await sb.from('purchases').insert(returnPurchase);
+    if(retErr)console.error('교환반납 등록 오류:',retErr.message);
+  }
+
+  // 교환 시 새 상품 구매내역 자동 등록
   if(type==='exchange'&&etoItems.length>0){
     const frameItems=etoItems.filter(it=>it.cat==='frame');
     const lensItems=etoItems.filter(it=>it.cat==='lens');
@@ -2633,6 +2657,7 @@ async function saveReturn(idx, purchaseId){
   const {data:purchases}=await sb.from('purchases').select('*').eq('customer_id',cu.id).order('date',{ascending:false});
   if(purchases){
     cu.purchases=purchases;
+    await loadPurchaseItems(cu);
     await loadReturnsForPurchases(cu);
   }
   renderPurchaseTab(cu);
