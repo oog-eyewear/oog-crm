@@ -2733,8 +2733,7 @@ async function loadPurchaseItems(cu){
 }
 
 async function cancelReturn(returnId, purchaseId, idx){
-  if(!confirm('환불/교환 처리를 취소할까요?
-연결된 자동 생성 구매내역도 함께 삭제됩니다.'))return;
+  if(!confirm('환불/교환 처리를 취소할까요? 연결된 자동 생성 구매내역도 함께 삭제됩니다.'))return;
   const cu=currentCustomer;
 
   // 1. returns 행 삭제
