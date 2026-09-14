@@ -1147,50 +1147,75 @@ async function deleteExam(idx){
 
 // 구매내역 탭
 function renderPurchaseTab(cu){
-  const purchases=[...cu.purchases].reverse();
+  // 날짜순 정렬 (최신→오래된 순)
+  const purchases=[...cu.purchases].sort((a,b)=>b.date.localeCompare(a.date));
   _frameItemCount=1;_lensItemCount=1;
+
+  // 마이너스/교환 행 → 원본 날짜 기준으로 연결
+  const refundRows=purchases.filter(p=>p._isRefundRow||p._isExchangeRow);
+  const refundMapByDate={};
+  refundRows.forEach(p=>{
+    if(!refundMapByDate[p.date])refundMapByDate[p.date]=[];
+    refundMapByDate[p.date].push(p);
+  });
+
+  // 원본 행만 렌더 (마이너스/교환 자동생성 행 숨김)
+  const mainPurchases=purchases.filter(p=>!p._isRefundRow&&!p._isExchangeRow);
+
   document.getElementById('main-content').innerHTML=`
     <div id="purchase-form-area"></div>
-    ${purchases.length?purchases.map((p,ri)=>{
-      const realIdx=cu.purchases.length-1-ri;
+    ${mainPurchases.length?mainPurchases.map((p,ri)=>{
+      const realIdx=cu.purchases.indexOf(p);
       const fp=parsePrice(p.frame_price||0),lp=parsePrice(p.lens_price||0);
       const finalP=parsePrice(p.final_price||p.price||0);
       const payLabel=p.payment_method==='cash'?'현금':p.payment_method==='mixed'?'카드+현금':'카드';
+      const hasReturn=!!p._return;
+      const strikeStyle=hasReturn?'text-decoration:line-through;opacity:0.5;':'';
+
+      // 이 구매건과 연결된 환불/교환 자동생성 행들
+      const linkedRows=(refundMapByDate[p._return?.date]||[]).filter(r=>{
+        const rm=r.memo||'';
+        const pm=p._items&&p._items.length?p._items.map(it=>it.item_name).filter(Boolean):
+          [p.frame_item,p.frame_item_b,p.lens_item,p.lens_item_b].filter(Boolean);
+        return pm.some(name=>name&&rm.includes(name));
+      });
+
+      // 상품 아이템 렌더 함수
+      const renderItems=(items,pData,strike)=>{
+        if(items&&items.length){
+          return items.map(it=>{
+            const cat=it.category;
+            const tagCls=cat==='frame'?'blue':cat==='lens'?'green':'amber';
+            const tagLabel=cat==='frame'?'프레임':cat==='lens'?`렌즈${it.qty&&it.qty!=1?' '+it.qty+'조':''}`:'기타';
+            return `<div style="font-size:13px;margin-bottom:4px;${strike}"><span class="tag ${tagCls}" style="margin-right:4px;">${tagLabel}</span>${it.item_name||'—'}</div>`;
+          }).join('');
+        }
+        const lines=[];
+        if(pData.frame_item)lines.push(`<div style="font-size:13px;margin-bottom:4px;${strike}"><span class="tag blue" style="margin-right:4px;">프레임</span>${pData.frame_item}</div>`);
+        if(pData.frame_item_b)lines.push(`<div style="font-size:13px;margin-bottom:4px;${strike}"><span class="tag blue" style="margin-right:4px;">프레임</span>${pData.frame_item_b}</div>`);
+        if(pData.lens_item)lines.push(`<div style="font-size:13px;margin-bottom:4px;${strike}"><span class="tag green" style="margin-right:4px;">렌즈${pData.lens_qty_a&&pData.lens_qty_a!=1?' '+pData.lens_qty_a+'조':''}</span>${pData.lens_item}</div>`);
+        if(pData.lens_item_b)lines.push(`<div style="font-size:13px;margin-bottom:4px;${strike}"><span class="tag green" style="margin-right:4px;">렌즈${pData.lens_qty_b&&pData.lens_qty_b!=1?' '+pData.lens_qty_b+'조':''}</span>${pData.lens_item_b}</div>`);
+        return lines.join('')||`<div style="font-size:14px;font-weight:500;${strike}">${pData.item||'—'}</div>`;
+      };
+
       return `
       <div style="display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px;">
-        <span class="section-label" style="margin:0;">${p.date}${ri===0?' &nbsp;<span class="tag blue">최근</span>':''}${p.memo&&p.memo.startsWith('[환불]')?' &nbsp;<span style="font-size:10px;font-weight:600;background:#FFF0EE;color:#c41c00;padding:2px 7px;border-radius:99px;">환불</span>':p.memo&&p.memo.startsWith('[교환]')?' &nbsp;<span style="font-size:10px;font-weight:600;background:#FFF8E8;color:#7a4800;padding:2px 7px;border-radius:99px;">교환</span>':''}</span>
+        <span class="section-label" style="margin:0;">${p.date}${ri===0?' &nbsp;<span class="tag blue">최근</span>':''}
+          ${hasReturn?`&nbsp;<span style="font-size:10px;font-weight:600;background:${p._return.type==='refund'?'#FFF0EE':'#FFF8E8'};color:${p._return.type==='refund'?'#c41c00':'#7a4800'};padding:2px 7px;border-radius:99px;">${p._return.type==='refund'?'환불완료':'교환완료'}</span>`:''}
+        </span>
         <div style="display:flex;gap:6px;">
-          <button class="edit-btn" onclick="showReturnForm(${realIdx},'${p.id}')" style="color:#7a4800;">환불/교환</button>
+          ${!hasReturn?`<button class="edit-btn" onclick="showReturnForm(${realIdx},'${p.id}')" style="color:#7a4800;">환불/교환</button>`:''}
           <button class="edit-btn" onclick="showPurchaseEditForm(${realIdx})">수정</button>
         </div>
       </div>
-      <div class="card">
+      <div class="card" style="${hasReturn?'border-color:#E0E0E0;':''}">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
           <div style="flex:1;">
-            ${p._return?`<div style="margin-bottom:6px;">
-          <span style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;${p._return.type==='refund'?'background:#FFF0EE;color:#c41c00;':'background:#FFF8E8;color:#7a4800;'}">${p._return.type==='refund'?'환불':'교환'} ${p._return.date||''}</span>
-          ${p._return.type==='refund'&&p._return.refund_amount?`<span style="font-size:11px;color:#c41c00;margin-left:6px;">-₩${formatPrice(p._return.refund_amount)}</span>`:''}
-          ${p._return.type==='exchange'&&p._return.exchange_diff?`<span style="font-size:11px;margin-left:6px;color:${p._return.exchange_diff>0?'#2d5a1b':'#c41c00'};">${p._return.exchange_diff>0?'+':''}₩${formatPrice(Math.abs(p._return.exchange_diff))}</span>`:''}
-          ${p._return.type==='exchange'&&(p._return.exchange_from||p._return.exchange_to)?`<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">${p._return.exchange_from||'?'} → ${p._return.exchange_to||'?'}</div>`:''}
-        </div>`:''}
-        ${p._items&&p._items.length?p._items.map(it=>{
-              const cat=it.category;
-              const tagCls=cat==='frame'?'blue':cat==='lens'?'green':'amber';
-              const tagLabel=cat==='frame'?'프레임':cat==='lens'?`렌즈${it.qty&&it.qty!=1?' '+it.qty+'조':''}`:'기타';
-              return `<div style="font-size:13px;margin-bottom:4px;"><span class="tag ${tagCls}" style="margin-right:4px;">${tagLabel}</span>${it.item_name||'—'}</div>`;
-            }).join(''):(
-              p.frame_item||p.frame_item_b||p.lens_item||p.lens_item_b?[
-                p.frame_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item}</div>`:'',
-                p.frame_item_b?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;">프레임</span>${p.frame_item_b}</div>`:'',
-                p.lens_item?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag green" style="margin-right:4px;">렌즈${p.lens_qty_a&&p.lens_qty_a!=1?' '+p.lens_qty_a+'조':''}</span>${p.lens_item}</div>`:'',
-                p.lens_item_b?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag green" style="margin-right:4px;">렌즈${p.lens_qty_b&&p.lens_qty_b!=1?' '+p.lens_qty_b+'조':''}</span>${p.lens_item_b}</div>`:'',
-              ].join(''):
-              `<div style="font-size:14px;font-weight:500;">${p.item||'—'}</div>`
-            )}
+            ${renderItems(p._items,p,strikeStyle)}
           </div>
-          <span style="font-size:15px;font-weight:600;color:#FF2400;margin-left:12px;flex-shrink:0;">₩${formatPrice(finalP)}</span>
+          <span style="font-size:15px;font-weight:600;color:${hasReturn?'var(--text-hint)':'#FF2400'};margin-left:12px;flex-shrink:0;${strikeStyle}">₩${formatPrice(finalP)}</span>
         </div>
-        <div style="padding-top:8px;border-top:0.5px solid #EBEBEB;font-size:12px;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:8px;">
+        <div style="padding-top:8px;border-top:0.5px solid #EBEBEB;font-size:12px;color:var(--text-secondary);display:flex;flex-wrap:wrap;gap:8px;${strikeStyle}">
           ${p._items&&p._items.length?p._items.map(it=>{
             const label=it.category==='frame'?'프레임':it.category==='lens'?`렌즈${it.qty&&it.qty!=1?' '+it.qty+'조':''}`:'기타';
             return `<span>${label} ₩${formatPrice(it.price)}</span>`;
@@ -1203,16 +1228,32 @@ function renderPurchaseTab(cu){
           </span>
         </div>
         ${(()=>{
-              const exam=cu.exams&&cu.exams.find(e=>e.date===p.date);
-              if(exam&&(exam.re_sph||exam.le_sph)){
-                const r=[exam.re_sph,exam.re_cyl?(exam.re_cyl+' ×'+exam.re_ax):''].filter(Boolean).join(' / ');
-                const l=[exam.le_sph,exam.le_cyl?(exam.le_cyl+' ×'+exam.le_ax):''].filter(Boolean).join(' / ');
-                const add=exam.add_power?'  ADD '+exam.add_power:'';
-                return '<div style="margin-top:6px;font-size:11px;color:var(--text-hint);">처방: R) '+(r||'—')+'  L) '+(l||'—')+add+'</div>';
-              }
-              return p.lens?'<div style="margin-top:6px;font-size:11px;color:var(--text-hint);">처방: '+p.lens+'</div>':'';
-            })()}
+          const exam=cu.exams&&cu.exams.find(e=>e.date===p.date);
+          if(exam&&(exam.re_sph||exam.le_sph)){
+            const r=[exam.re_sph,exam.re_cyl?(exam.re_cyl+' ×'+exam.re_ax):''].filter(Boolean).join(' / ');
+            const l=[exam.le_sph,exam.le_cyl?(exam.le_cyl+' ×'+exam.le_ax):''].filter(Boolean).join(' / ');
+            const add=exam.add_power?'  ADD '+exam.add_power:'';
+            return '<div style="margin-top:6px;font-size:11px;color:var(--text-hint);">처방: R) '+(r||'—')+'  L) '+(l||'—')+add+'</div>';
+          }
+          return p.lens?'<div style="margin-top:6px;font-size:11px;color:var(--text-hint);">처방: '+p.lens+'</div>':'';
+        })()}
         ${p.memo?`<div style="margin-top:6px;font-size:12px;color:var(--text-secondary);background:#F9F9F9;border-radius:6px;padding:6px 8px;line-height:1.5;">📝 ${p.memo}</div>`:''}
+        ${hasReturn?`
+        <div style="margin-top:10px;border-top:0.5px dashed #E0E0E0;padding-top:10px;">
+          <div style="font-size:11px;font-weight:600;color:${p._return.type==='refund'?'#c41c00':'#7a4800'};margin-bottom:6px;">
+            ↳ ${p._return.date} ${p._return.type==='refund'?'환불':'교환'}
+          </div>
+          ${p._return.type==='refund'?`
+          <div style="font-size:12px;color:var(--text-secondary);">
+            환불금액: <span style="color:#c41c00;font-weight:600;">-₩${formatPrice(p._return.refund_amount||0)}</span>
+            ${p._return.reason?` · ${p._return.reason}`:''}
+          </div>`:`
+          <div style="font-size:12px;color:var(--text-secondary);">
+            ${p._return.exchange_from?`${p._return.exchange_from} → ${p._return.exchange_to||''}`:p._return.exchange_to||''}
+            ${p._return.exchange_diff?`<span style="color:${p._return.exchange_diff>0?'#2d5a1b':'#c41c00'};font-weight:600;margin-left:6px;">${p._return.exchange_diff>0?'+':''} ₩${formatPrice(Math.abs(p._return.exchange_diff))}</span>`:''}
+            ${p._return.reason?` · ${p._return.reason}`:''}
+          </div>`}
+        </div>`:''}
       </div>
       <div id="purchase-return-area-${realIdx}"></div>
       <div id="purchase-edit-area-${realIdx}"></div>`;
@@ -2064,15 +2105,28 @@ function showReturnForm(idx, purchaseId){
     ...(p.lens_item?[{category:'lens',item_name:p.lens_item,price:parsePrice(p.lens_price||0),qty:p.lens_qty_a||1}]:[]),
     ...(p.lens_item_b?[{category:'lens',item_name:p.lens_item_b,price:parsePrice(p.lens_price_b||0),qty:p.lens_qty_b||1}]:[]),
   ];
-  const items=rawItems.map((it,i)=>({
-    label:(it.category==='frame'?'프레임':'렌즈')+': '+it.item_name+(it.qty&&it.qty!=1?' '+it.qty+'조':''),
-    name:it.item_name,
-    price:parsePrice(it.price)*(it.qty||1), // 수량 반영된 금액
-    unitPrice:parsePrice(it.price),
-    qty:it.qty||1,
-    field:it._field||it.category+'_'+i,
-    category:it.category
-  }));
+  // 할인 배분 계산 (정상가 합계 대비 각 상품 비율로 할인 배분)
+  const totalRawAmt=rawItems.reduce((s,it)=>s+(parsePrice(it.price)*(it.qty||1)),0);
+  const totalDiscount=parsePrice(p.discount_value||0);
+  const finalTotal=parsePrice(p.final_price||p.price||0);
+
+  const items=rawItems.map((it,i)=>{
+    const rawAmt=parsePrice(it.price)*(it.qty||1);
+    // 할인 배분: 각 상품 비율에 따라 총 할인 배분
+    const discShare=totalRawAmt>0?Math.round(totalDiscount*(rawAmt/totalRawAmt)):0;
+    const actualAmt=rawAmt-discShare; // 실 결제가 (할인 반영)
+    return {
+      label:(it.category==='frame'?'프레임':'렌즈')+': '+it.item_name+(it.qty&&it.qty!=1?' '+it.qty+'조':'')
+        +(discShare>0?` (정상가 ₩${formatPrice(rawAmt)} → 실결제 ₩${formatPrice(actualAmt)})`:` (₩${formatPrice(rawAmt)})`),
+      name:it.item_name,
+      price:actualAmt, // 할인 반영된 실결제가
+      rawPrice:rawAmt,
+      unitPrice:parsePrice(it.price),
+      qty:it.qty||1,
+      field:it._field||it.category+'_'+i,
+      category:it.category
+    };
+  });
 
   const frameBrands=[...new Set(products.filter(pr=>pr.category==='frame').map(pr=>pr.brand))];
   const lensBrands=[...new Set(products.filter(pr=>pr.category==='lens').map(pr=>pr.brand))];
@@ -2681,19 +2735,28 @@ async function loadPurchaseItems(cu){
 
 async function loadReturnsForPurchases(cu){
   if(!cu.purchases||!cu.purchases.length)return;
-  // 먼저 모두 null로 초기화
-  cu.purchases.forEach(p=>{p._return=null;});
+  cu.purchases.forEach(p=>{p._return=null;p._isRefundRow=false;p._linkedReturn=null;});
   const purchaseIds=cu.purchases.map(p=>p.id);
   const {data:returns}=await sb.from('returns').select('*').in('purchase_id',purchaseIds);
-  if(!returns||!returns.length)return;
-  // 각 구매에 _return 연결
-  const returnMap={};
-  returns.forEach(r=>{
-    if(!returnMap[r.purchase_id]||r.created_at>returnMap[r.purchase_id].created_at){
-      returnMap[r.purchase_id]=r;
+  if(returns&&returns.length){
+    const returnMap={};
+    returns.forEach(r=>{
+      if(!returnMap[r.purchase_id]||r.created_at>returnMap[r.purchase_id].created_at){
+        returnMap[r.purchase_id]=r;
+      }
+    });
+    cu.purchases.forEach(p=>{p._return=returnMap[p.id]||null;});
+  }
+  // 마이너스 행([환불],[교환반납]) 식별 및 원본과 연결
+  cu.purchases.forEach(p=>{
+    const memo=p.memo||'';
+    if(memo.startsWith('[환불]')||memo.startsWith('[교환반납]')){
+      p._isRefundRow=true;
+    }
+    if(memo.startsWith('[교환]')){
+      p._isExchangeRow=true;
     }
   });
-  cu.purchases.forEach(p=>{p._return=returnMap[p.id]||null;});
 }
 
 async function deletePurchase(idx){
