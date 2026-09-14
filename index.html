@@ -1243,14 +1243,30 @@ function renderPurchaseTab(cu){
             <button onclick="cancelReturn('${p._return.id}','${p.id}',${realIdx})" style="font-size:11px;color:var(--text-hint);background:none;border:0.5px solid #E0E0E0;border-radius:6px;padding:2px 8px;cursor:pointer;">취소</button>
           </div>
           ${p._return.type==='refund'?`
-          <div style="font-size:12px;color:var(--text-secondary);">
-            환불금액: <span style="color:#c41c00;font-weight:600;">-₩${formatPrice(p._return.refund_amount||0)}</span>
-            ${p._return.reason?` · ${p._return.reason}`:''}
+          <div style="margin-top:4px;">
+            ${p._return.exchange_from?`<div style="font-size:13px;margin-bottom:4px;"><span class="tag blue" style="margin-right:4px;opacity:0.6;">반납</span><span style="color:var(--text-secondary);">${p._return.exchange_from}</span></div>`:''}
+            <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">
+              환불금액: <span style="color:#c41c00;font-weight:600;">-₩${formatPrice(p._return.refund_amount||0)}</span>
+              ${p._return.reason?`<div style="margin-top:4px;font-size:11px;color:var(--text-hint);">${p._return.reason}</div>`:''}
+            </div>
           </div>`:`
-          <div style="font-size:12px;color:var(--text-secondary);">
-            ${p._return.exchange_from?`${p._return.exchange_from} → ${p._return.exchange_to||''}`:p._return.exchange_to||''}
-            ${p._return.exchange_diff?`<span style="color:${p._return.exchange_diff>0?'#2d5a1b':'#c41c00'};font-weight:600;margin-left:6px;">${p._return.exchange_diff>0?'+':''} ₩${formatPrice(Math.abs(p._return.exchange_diff))}</span>`:''}
-            ${p._return.reason?` · ${p._return.reason}`:''}
+          <div style="margin-top:4px;">
+            ${(()=>{
+              // 교환 받은 상품을 구매 카드처럼 태그로 표시
+              const toItems=(p._return.exchange_to||'').split(' / ').filter(Boolean);
+              if(!toItems.length)return '';
+              // 교환 대상 상품 카테고리 추정 (렌즈면 lens 태그, 아니면 frame)
+              const origLensNames=(p._items||[]).filter(it=>it.category==='lens').map(it=>it.item_name);
+              return toItems.map(name=>{
+                const isLens=origLensNames.some(ln=>ln&&name&&name.includes(ln.split(' ')[0]))||name.includes('1.')||name.includes('렌즈');
+                const tagCls=isLens?'green':'blue';
+                const tagLabel=isLens?'렌즈':'프레임';
+                return `<div style="font-size:13px;margin-bottom:4px;"><span class="tag ${tagCls}" style="margin-right:4px;">${tagLabel}</span>${name}</div>`;
+              }).join('');
+            })()}
+            ${p._return.exchange_from?`<div style="font-size:11px;color:var(--text-hint);margin:4px 0 2px;">반납: ${p._return.exchange_from}</div>`:''}
+            ${p._return.exchange_diff?`<div style="font-size:12px;margin-top:4px;">차액: <span style="color:${p._return.exchange_diff>0?'#2d5a1b':'#c41c00'};font-weight:600;">${p._return.exchange_diff>0?'+':'-'}₩${formatPrice(Math.abs(p._return.exchange_diff))}</span></div>`:''}
+            ${p._return.reason?`<div style="margin-top:4px;font-size:11px;color:var(--text-hint);">${p._return.reason}</div>`:''}
           </div>`}
         </div>`:''}
       </div>
