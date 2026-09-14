@@ -1240,8 +1240,11 @@ function renderPurchaseTab(cu){
         ${p.memo?`<div style="margin-top:6px;font-size:12px;color:var(--text-secondary);background:#F9F9F9;border-radius:6px;padding:6px 8px;line-height:1.5;">📝 ${p.memo}</div>`:''}
         ${hasReturn?`
         <div style="margin-top:10px;border-top:0.5px dashed #E0E0E0;padding-top:10px;">
-          <div style="font-size:11px;font-weight:600;color:${p._return.type==='refund'?'#c41c00':'#7a4800'};margin-bottom:6px;">
-            ↳ ${p._return.date} ${p._return.type==='refund'?'환불':'교환'}
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="font-size:11px;font-weight:600;color:${p._return.type==='refund'?'#c41c00':'#7a4800'};">
+              ↳ ${p._return.date} ${p._return.type==='refund'?'환불':'교환'}
+            </div>
+            <button onclick="cancelReturn('${p._return.id}','${p.id}',${realIdx})" style="font-size:11px;color:var(--text-hint);background:none;border:0.5px solid #E0E0E0;border-radius:6px;padding:2px 8px;cursor:pointer;">취소</button>
           </div>
           ${p._return.type==='refund'?`
           <div style="font-size:12px;color:var(--text-secondary);">
@@ -2731,6 +2734,50 @@ async function loadPurchaseItems(cu){
     itemMap[it.purchase_id].push(it);
   });
   cu.purchases.forEach(p=>{p._items=itemMap[p.id]||[];});
+}
+
+async function cancelReturn(returnId, purchaseId, idx){
+  if(!confirm('환불/교환 처리를 취소할까요?
+연결된 자동 생성 구매내역도 함께 삭제됩니다.'))return;
+  const cu=currentCustomer;
+
+  // 1. returns 행 삭제
+  const {error:retErr}=await sb.from('returns').delete().eq('id',returnId);
+  if(retErr){alert('오류: '+retErr.message);return;}
+
+  // 2. 연결된 자동생성 구매내역 삭제 ([환불], [교환반납], [교환] 메모로 시작하는 행)
+  // 원본 구매의 날짜 기준으로 같은 고객의 마이너스/교환 행 찾아서 삭제
+  const origP=cu.purchases.find(p=>p.id===purchaseId);
+  if(origP){
+    // returns 테이블에서 방금 삭제한 건의 date로 생성된 자동행 조회
+    const {data:autoRows}=await sb.from('purchases')
+      .select('id,memo,final_price')
+      .eq('customer_id',cu.id)
+      .or('memo.ilike.[환불]%,memo.ilike.[교환반납]%,memo.ilike.[교환]%');
+    if(autoRows&&autoRows.length){
+      // 원본 상품명이 포함된 행만 삭제
+      const origItems=(origP._items&&origP._items.length
+        ?origP._items.map(it=>it.item_name)
+        :[origP.frame_item,origP.frame_item_b,origP.lens_item,origP.lens_item_b]
+      ).filter(Boolean);
+      const toDelete=autoRows.filter(r=>{
+        const memo=r.memo||'';
+        return origItems.some(name=>name&&memo.includes(name));
+      });
+      for(const row of toDelete){
+        await sb.from('purchases').delete().eq('id',row.id);
+      }
+    }
+  }
+
+  // 3. 구매내역 새로고침
+  const {data:purchases}=await sb.from('purchases').select('*').eq('customer_id',cu.id).order('date',{ascending:true});
+  if(purchases){
+    cu.purchases=purchases;
+    await loadPurchaseItems(cu);
+    await loadReturnsForPurchases(cu);
+  }
+  renderPurchaseTab(cu);
 }
 
 async function loadReturnsForPurchases(cu){
