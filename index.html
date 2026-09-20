@@ -2692,7 +2692,7 @@ async function saveReturn(idx, purchaseId){
     const dlex=parseInt(document.getElementById('ret-disc-lex-'+idx)?.value||0)||0;
     const lensDisc=(dlv>0?(dlt==='percent'?Math.round(rawLensAmt*dlv/100):dlv):0)+dlex;
     const totalDisc=frameDisc+lensDisc;
-    const finalAmt=Math.max(0,rawFrameAmt+rawLensAmt-totalDisc-fromAmt);
+    const finalAmt=Math.max(0,rawFrameAmt+rawLensAmt-totalDisc); // 교환 상품 실결제가 전체
     // 원가 계산
     function findCostByName(name){if(!name)return 0;const pr=products.find(p=>[p.brand,p.name,p.option].filter(Boolean).join(' ')===name);return pr?.cost||0;}
     const costTotal=frameItems.reduce((s,it)=>s+findCostByName(it.name),0)+lensItems.reduce((s,it)=>s+findCostByName(it.name),0);
