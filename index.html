@@ -1867,7 +1867,8 @@ function showPurchaseEditForm(idx){
       </div>
       <div style="font-size:11px;color:var(--text-hint);margin-bottom:12px;">💡 도수를 입력하면 검안기록에도 자동 저장됩니다.</div>
       <div style="display:flex;gap:8px;margin-top:8px;">
-        <button class="action-btn primary" onclick="savePurchaseEdit(${idx})" style="margin-bottom:0;">저장</button>
+        <button class="action-btn primary" onclick="savePurchaseEdit(${idx})" style="flex:1;margin-bottom:0;">저장</button>
+        <button class="action-btn" onclick="document.getElementById('purchase-edit-area-${idx}').innerHTML=''" style="flex:1;margin-bottom:0;">취소</button>
         <button class="action-btn danger" onclick="deletePurchase(${idx})" style="margin-bottom:0;">삭제</button>
       </div>
     </div>`;
