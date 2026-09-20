@@ -1968,7 +1968,7 @@ function onEditItemChange(idx, itemIdx, cat, field){
 function getEditItems(idx){
   const items=[];
   const wrap=document.getElementById('pe-items-wrap-'+idx);if(!wrap)return items;
-  [...wrap.children].forEach(el=>{
+  [...wrap.querySelectorAll('[id^="pe-item-'+idx+'-"]')].forEach(el=>{
     if(!el.id||!el.id.startsWith('pe-item-'+idx+'-'))return;
     const parts=el.id.split('-');
     const itemIdx=parts[parts.length-1];
@@ -1989,19 +1989,19 @@ function getEditItems(idx){
 }
 function addEditFrameItem(idx){
   const wrap=document.getElementById('pe-items-wrap-'+idx);if(!wrap)return;
-  if(!_editItemCount[idx])_editItemCount[idx]=wrap.children.length;
+  if(!_editItemCount[idx])_editItemCount[idx]=wrap.querySelectorAll('[id^="pe-item-'+idx+'-"]').length;
   const count=_editItemCount[idx]++;
-  const div=document.createElement('div');
-  div.innerHTML=makeEditItemHtml(idx,count,{category:'frame',item_name:'',price:0,qty:1});
-  wrap.appendChild(div.firstElementChild);
+  const fBrands=[...new Set(products.filter(p=>p.category==='frame').map(p=>p.brand))];
+  const lBrands=[...new Set(products.filter(p=>p.category==='lens').map(p=>p.brand))];
+  wrap.insertAdjacentHTML('beforeend', makeEditItemHtml(idx,count,{category:'frame',item_name:'',price:0,qty:1},fBrands,lBrands));
 }
 function addEditLensItem(idx){
   const wrap=document.getElementById('pe-items-wrap-'+idx);if(!wrap)return;
-  if(!_editItemCount[idx])_editItemCount[idx]=wrap.children.length;
+  if(!_editItemCount[idx])_editItemCount[idx]=wrap.querySelectorAll('[id^="pe-item-'+idx+'-"]').length;
   const count=_editItemCount[idx]++;
-  const div=document.createElement('div');
-  div.innerHTML=makeEditItemHtml(idx,count,{category:'lens',item_name:'',price:0,qty:1});
-  wrap.appendChild(div.firstElementChild);
+  const fBrands=[...new Set(products.filter(p=>p.category==='frame').map(p=>p.brand))];
+  const lBrands=[...new Set(products.filter(p=>p.category==='lens').map(p=>p.brand))];
+  wrap.insertAdjacentHTML('beforeend', makeEditItemHtml(idx,count,{category:'lens',item_name:'',price:0,qty:1},fBrands,lBrands));
 }
 function removeEditItem(idx,itemIdx){
   const el=document.getElementById('pe-item-'+idx+'-'+itemIdx);
