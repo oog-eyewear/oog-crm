@@ -1761,10 +1761,12 @@ async function savePurchase(){
   await updateVisitCount(cu);renderPurchaseTab(cu);
 }
 
-function showPurchaseEditForm(idx){
+async function showPurchaseEditForm(idx){
   const cu=currentCustomer;const p=cu.purchases[idx];
   const area=document.getElementById('purchase-edit-area-'+idx);if(!area)return;
   if(area.innerHTML){area.innerHTML='';return;}
+  // products 없으면 먼저 로드
+  if(!products||!products.length) await loadProducts();
   const frameBrands=[...new Set(products.filter(pr=>pr.category==='frame').map(pr=>pr.brand))];
   const lensBrands=[...new Set(products.filter(pr=>pr.category==='lens').map(pr=>pr.brand))];
   _editItemCount[idx]=(p._items&&p._items.length?p._items:[
@@ -1867,9 +1869,11 @@ function showPurchaseEditForm(idx){
       </div>
       <div style="font-size:11px;color:var(--text-hint);margin-bottom:12px;">💡 도수를 입력하면 검안기록에도 자동 저장됩니다.</div>
       <div style="display:flex;gap:8px;margin-top:8px;">
-        <button class="action-btn primary" onclick="savePurchaseEdit(${idx})" style="flex:1;margin-bottom:0;">저장</button>
-        <button class="action-btn" onclick="document.getElementById('purchase-edit-area-${idx}').innerHTML=''" style="flex:1;margin-bottom:0;">취소</button>
-        <button class="action-btn danger" onclick="deletePurchase(${idx})" style="margin-bottom:0;">삭제</button>
+        <div style="display:flex;gap:8px;margin-top:4px;">
+          <button class="action-btn primary" onclick="savePurchaseEdit(${idx})" style="flex:1;margin-bottom:0;">저장</button>
+          <button class="action-btn" onclick="document.getElementById('purchase-edit-area-${idx}').innerHTML=''" style="flex:1;margin-bottom:0;">취소</button>
+          <button class="action-btn danger" onclick="deletePurchase(${idx})" style="flex:1;margin-bottom:0;">삭제</button>
+        </div>
       </div>
     </div>`;
   calcEditTotal(idx);
