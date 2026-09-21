@@ -307,7 +307,7 @@ async function renderHome(){
 
   // 병렬 데이터 로드
   const [{data:cuList},{data:todayPurchases},{data:monthPurchases},{data:recentPurchases}]=await Promise.all([
-    sb.from('customers').select('id,name,gender,phone,visits,last_visit').order('created_at',{ascending:true}),
+    sb.from('customers').select('id,name,gender,phone,email,birth,address,visits,last_visit').order('created_at',{ascending:true}),
     sb.from('purchases').select('final_price,price').eq('date',todayStr),
     sb.from('purchases').select('final_price,price').like('date',monthStr+'%'),
     sb.from('purchases').select('*').order('date',{ascending:false}).limit(50),
