@@ -1740,6 +1740,15 @@ async function savePurchase(){
     if(piRows.length){
       await sb.from('purchase_items').insert(piRows);
       data._items=piRows;
+      // 재고 자동 차감 (frame, etc만)
+      for(const row of piRows){
+        if(row.category==='lens')continue;
+        const prod=products.find(p=>[p.brand,p.name,p.option].filter(Boolean).join(' ')===row.item_name);
+        if(!prod)continue;
+        await sb.from('products').update({stock:Math.max(0,(prod.stock||0)-1)}).eq('id',prod.id);
+        await sb.from('inventory_logs').insert({product_id:prod.id,type:'out',qty:row.qty||1,price:row.price,cost:prod.cost||0,date:data.date,purchase_id:data.id,memo:'판매 자동차감'});
+        prod.stock=Math.max(0,(prod.stock||0)-1);
+      }
     }
   }
   cu.purchases.push(data);cu.purchases.sort((a,b)=>a.date.localeCompare(b.date));
@@ -2959,6 +2968,14 @@ function showSettingsPage(){
     </label>
     <div style="font-size:11px;color:var(--text-hint);margin:-4px 0 8px;padding:0 2px;">※ 브랜드+상품명+옵션이 같으면 업데이트, 없으면 신규 추가</div>
     <div id="product-import-msg" style="font-size:12px;margin-bottom:8px;"></div>
+    <div class="section-label">재고 관리</div>
+    <div class="card" style="margin-bottom:12px;"><div id="inventory-area"><div class="spinner"></div></div></div>
+    <div style="display:flex;gap:8px;margin-bottom:6px;">
+      <button class="action-btn" onclick="showInventoryInForm()" style="flex:1;text-align:center;margin-bottom:0;">📦 입고 등록</button>
+      <button class="action-btn" onclick="showInventoryLog()" style="flex:1;text-align:center;margin-bottom:0;">📋 입출고 이력</button>
+    </div>
+    <div id="inventory-form-area"></div>
+    <div id="inventory-log-area"></div>
     <div class="section-label">직원 계정 관리</div>
     <div class="card" style="margin-bottom:12px;"><div id="staff-list"><div class="spinner"></div></div></div>
     <button class="action-btn" onclick="showAddStaffForm()">+ 직원 계정 추가</button>
@@ -2975,7 +2992,163 @@ function showSettingsPage(){
     </div>
     <button class="action-btn danger" onclick="doLogout()">로그아웃</button>
     <div style="height:20px;"></div>`;
-  loadProductList();loadStaffList();
+  loadProductList();loadStaffList();loadInventoryList();
+}
+
+// ══════════════════════════════
+// 재고 관리
+// ══════════════════════════════
+async function loadInventoryList(){
+  const area=document.getElementById('inventory-area');
+  if(!area)return;
+  if(!products||!products.length)await loadProducts();
+  const invProds=products.filter(p=>p.category==='frame'||p.category==='etc');
+  if(!invProds.length){area.innerHTML='<div style="font-size:13px;color:var(--text-hint);padding:8px 0;">등록된 프레임/기타 상품이 없습니다.</div>';return;}
+  // 재고 부족 경고 (최소 수량 이하)
+  const lowStock=invProds.filter(p=>(p.stock||0)<=(p.stock_min||1)&&(p.stock_min||1)>0);
+  area.innerHTML=`
+    ${lowStock.length?`<div style="background:#FFF0EE;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#c41c00;">⚠️ 재고 부족 ${lowStock.length}종: ${lowStock.map(p=>p.name).join(', ')}</div>`:''}
+    <div style="overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead>
+        <tr style="border-bottom:1px solid #EBEBEB;">
+          <th style="text-align:left;padding:6px 4px;color:var(--text-secondary);font-weight:500;">브랜드</th>
+          <th style="text-align:left;padding:6px 4px;color:var(--text-secondary);font-weight:500;">상품명</th>
+          <th style="text-align:left;padding:6px 4px;color:var(--text-secondary);font-weight:500;">옵션</th>
+          <th style="text-align:right;padding:6px 4px;color:var(--text-secondary);font-weight:500;">재고</th>
+          <th style="text-align:right;padding:6px 4px;color:var(--text-secondary);font-weight:500;">최소</th>
+          <th style="text-align:right;padding:6px 4px;color:var(--text-secondary);font-weight:500;">판매가</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${invProds.map(p=>{
+          const low=(p.stock||0)<=(p.stock_min||1);
+          return `<tr style="border-bottom:0.5px solid #F5F5F5;${low?'background:#FFF8F7;':''}">
+            <td style="padding:7px 4px;">${p.brand||'—'}</td>
+            <td style="padding:7px 4px;">${p.name||'—'}</td>
+            <td style="padding:7px 4px;color:var(--text-secondary);">${p.option||'—'}</td>
+            <td style="padding:7px 4px;text-align:right;font-weight:600;color:${low?'#c41c00':'#1a1a1a'};">${p.stock||0}</td>
+            <td style="padding:7px 4px;text-align:right;color:var(--text-hint);">${p.stock_min||1}</td>
+            <td style="padding:7px 4px;text-align:right;">₩${formatPrice(p.price||0)}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>`;
+}
+
+function showInventoryInForm(){
+  const area=document.getElementById('inventory-form-area');
+  if(!area)return;
+  if(area.innerHTML){area.innerHTML='';return;}
+  const today=new Date().toISOString().split('T')[0];
+  const invProds=products.filter(p=>p.category==='frame'||p.category==='etc');
+  const opts=invProds.map(p=>`<option value="${p.id}">${[p.brand,p.name,p.option].filter(Boolean).join(' ')} (현재 ${p.stock||0}개)</option>`).join('');
+  area.innerHTML=`<div class="card" style="border:0.5px solid var(--border);margin-bottom:12px;">
+    <div style="font-size:13px;font-weight:600;margin-bottom:12px;">입고 등록</div>
+    <div class="form-row"><div class="form-label">날짜</div>
+      <input class="form-input" type="date" id="inv-date" value="${today}"></div>
+    <div class="form-row"><div class="form-label">상품</div>
+      <select class="form-input" id="inv-product">
+        <option value="">상품 선택</option>${opts}
+      </select></div>
+    <div class="form-grid" style="gap:8px;">
+      <div class="form-row"><div class="form-label">입고 수량</div>
+        <input class="form-input" type="number" id="inv-qty" value="1" min="1"></div>
+      <div class="form-row"><div class="form-label">도매원가(원)</div>
+        <input class="form-input" type="number" id="inv-cost" placeholder="0"></div>
+    </div>
+    <div class="form-grid" style="gap:8px;">
+      <div class="form-row"><div class="form-label">판매가(원)</div>
+        <input class="form-input" type="number" id="inv-price" placeholder="0"></div>
+      <div class="form-row"><div class="form-label">최소재고</div>
+        <input class="form-input" type="number" id="inv-min" value="1" min="0"></div>
+    </div>
+    <div class="form-row"><div class="form-label">비고</div>
+      <input class="form-input" id="inv-memo" placeholder="입고처, 발주번호 등"></div>
+    <div id="inv-msg" style="font-size:12px;color:#FF2400;min-height:16px;"></div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button class="action-btn primary" onclick="saveInventoryIn()" style="flex:1;margin-bottom:0;">입고 저장</button>
+      <button class="action-btn" onclick="document.getElementById('inventory-form-area').innerHTML=''" style="flex:1;margin-bottom:0;">취소</button>
+    </div>
+  </div>`;
+}
+
+async function saveInventoryIn(){
+  const msg=document.getElementById('inv-msg');
+  const productId=document.getElementById('inv-product')?.value;
+  const date=document.getElementById('inv-date')?.value;
+  const qty=parseInt(document.getElementById('inv-qty')?.value||1)||1;
+  const cost=parseInt(document.getElementById('inv-cost')?.value||0)||0;
+  const price=parseInt(document.getElementById('inv-price')?.value||0)||0;
+  const stockMin=parseInt(document.getElementById('inv-min')?.value||1)||1;
+  const memo=document.getElementById('inv-memo')?.value||'';
+  if(!productId){if(msg)msg.textContent='상품을 선택해주세요.';return;}
+  if(!date){if(msg)msg.textContent='날짜를 입력해주세요.';return;}
+  const prod=products.find(p=>p.id===productId);
+  if(!prod){if(msg)msg.textContent='상품을 찾을 수 없습니다.';return;}
+  const newStock=(prod.stock||0)+qty;
+  // 재고 + 가격/원가 업데이트
+  const updates={stock:newStock,stock_min:stockMin};
+  if(price>0)updates.price=price;
+  if(cost>0)updates.cost=cost;
+  const {error:pErr}=await sb.from('products').update(updates).eq('id',productId);
+  if(pErr){if(msg)msg.textContent='오류: '+pErr.message;return;}
+  // 입고 이력 저장
+  const {error:lErr}=await sb.from('inventory_logs').insert({
+    product_id:productId,type:'in',qty,price:price||prod.price||0,
+    cost:cost||prod.cost||0,date,memo:memo||'입고',
+  });
+  if(lErr){if(msg)msg.textContent='이력 저장 오류: '+lErr.message;return;}
+  // 로컬 업데이트
+  Object.assign(prod,updates);
+  document.getElementById('inventory-form-area').innerHTML='';
+  await loadProducts();
+  loadInventoryList();
+  showToast(`${prod.name} ${qty}개 입고 완료 (현재 재고: ${newStock}개)`);
+}
+
+async function showInventoryLog(){
+  const area=document.getElementById('inventory-log-area');
+  if(!area)return;
+  if(area.innerHTML){area.innerHTML='';return;}
+  area.innerHTML='<div class="spinner" style="padding:12px 0;"></div>';
+  const {data:logs}=await sb.from('inventory_logs')
+    .select('*,products(brand,name,option)')
+    .order('date',{ascending:false})
+    .order('created_at',{ascending:false})
+    .limit(50);
+  if(!logs||!logs.length){area.innerHTML='<div class="card"><div style="font-size:13px;color:var(--text-hint);padding:8px 0;">입출고 이력이 없습니다.</div></div>';return;}
+  area.innerHTML=`<div class="card" style="margin-bottom:12px;">
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px;">입출고 이력 (최근 50건)</div>
+    <div style="overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <thead>
+        <tr style="border-bottom:1px solid #EBEBEB;">
+          <th style="text-align:left;padding:6px 4px;color:var(--text-secondary);font-weight:500;">날짜</th>
+          <th style="text-align:left;padding:6px 4px;color:var(--text-secondary);font-weight:500;">상품</th>
+          <th style="text-align:center;padding:6px 4px;color:var(--text-secondary);font-weight:500;">구분</th>
+          <th style="text-align:right;padding:6px 4px;color:var(--text-secondary);font-weight:500;">수량</th>
+          <th style="text-align:left;padding:6px 4px;color:var(--text-secondary);font-weight:500;">비고</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${logs.map(l=>{
+          const pName=l.products?[l.products.brand,l.products.name,l.products.option].filter(Boolean).join(' '):'—';
+          const typeLabel=l.type==='in'?'입고':l.type==='out'?'출고':'조정';
+          const typeColor=l.type==='in'?'#2d5a1b':l.type==='out'?'#c41c00':'#7a4800';
+          return `<tr style="border-bottom:0.5px solid #F5F5F5;">
+            <td style="padding:7px 4px;white-space:nowrap;">${l.date||'—'}</td>
+            <td style="padding:7px 4px;">${pName}</td>
+            <td style="padding:7px 4px;text-align:center;"><span style="font-size:11px;font-weight:600;color:${typeColor};background:${l.type==='in'?'#F0F9F0':l.type==='out'?'#FFF0EE':'#FFF8E8'};padding:2px 7px;border-radius:99px;">${typeLabel}</span></td>
+            <td style="padding:7px 4px;text-align:right;font-weight:600;color:${l.type==='in'?'#2d5a1b':'#c41c00'};">${l.type==='in'?'+':'−'}${l.qty}</td>
+            <td style="padding:7px 4px;color:var(--text-secondary);font-size:11px;">${l.memo||'—'}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    </div>
+  </div>`;
 }
 
 async function loadProductList(){
