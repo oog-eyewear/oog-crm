@@ -2968,13 +2968,10 @@ function showSettingsPage(){
     </label>
     <div style="font-size:11px;color:var(--text-hint);margin:-4px 0 8px;padding:0 2px;">※ 브랜드+상품명+옵션이 같으면 업데이트, 없으면 신규 추가</div>
     <div id="product-import-msg" style="font-size:12px;margin-bottom:8px;"></div>
-    <div class="section-label">재고 관리</div>
-    <div class="card" style="margin-bottom:12px;"><div id="inventory-area"><div class="spinner"></div></div></div>
-    <div style="display:flex;gap:8px;margin-bottom:6px;">
-      <button class="action-btn" onclick="showInventoryInForm()" style="flex:1;text-align:center;margin-bottom:0;">📦 입고 등록</button>
-      <button class="action-btn" onclick="showInventoryLog()" style="flex:1;text-align:center;margin-bottom:0;">📋 입출고 이력</button>
+    <div class="section-label">입출고 이력</div>
+    <div style="margin-bottom:6px;">
+      <button class="action-btn" onclick="showInventoryLog()" style="text-align:center;margin-bottom:0;">📋 입출고 이력 보기</button>
     </div>
-    <div id="inventory-form-area"></div>
     <div id="inventory-log-area"></div>
     <div class="section-label">직원 계정 관리</div>
     <div class="card" style="margin-bottom:12px;"><div id="staff-list"><div class="spinner"></div></div></div>
@@ -2992,7 +2989,7 @@ function showSettingsPage(){
     </div>
     <button class="action-btn danger" onclick="doLogout()">로그아웃</button>
     <div style="height:20px;"></div>`;
-  loadProductList();loadStaffList();loadInventoryList();
+  loadProductList();loadStaffList();
 }
 
 // ══════════════════════════════
@@ -3035,6 +3032,73 @@ async function loadInventoryList(){
       </tbody>
     </table>
     </div>`;
+}
+
+// 상품 목록에서 바로 입고 처리
+function showQuickStockIn(productId){
+  // 기존 열린 팝업 닫기
+  document.querySelectorAll('[id^="quick-stock-"]').forEach(el=>el.remove());
+  const prod=products.find(p=>p.id===productId);
+  if(!prod)return;
+  const today=new Date().toISOString().split('T')[0];
+  const row=document.getElementById('prod-row-'+productId);
+  if(!row)return;
+  // 기존 edit area 재활용
+  const editArea=document.getElementById('prod-edit-'+productId);
+  if(!editArea)return;
+  if(editArea.style.display!=='none'&&editArea.dataset.mode==='stockin'){
+    editArea.style.display='none';editArea.innerHTML='';editArea.dataset.mode='';return;
+  }
+  // 다른 열린 폼 닫기
+  document.querySelectorAll('[id^="prod-edit-"]').forEach(el=>{el.style.display='none';el.innerHTML='';el.dataset.mode='';});
+  editArea.dataset.mode='stockin';
+  editArea.style.display='block';
+  editArea.innerHTML=`
+    <div style="padding:4px 0 8px;">
+      <div style="font-size:12px;font-weight:600;color:#2d5a1b;margin-bottom:10px;">📦 입고 등록 — ${[prod.brand,prod.name,prod.option].filter(Boolean).join(' ')}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <div><div class="form-label">날짜</div><input class="form-input" type="date" id="qs-date-${productId}" value="${today}"></div>
+        <div><div class="form-label">입고 수량</div><input class="form-input" type="number" id="qs-qty-${productId}" value="1" min="1"></div>
+        <div><div class="form-label">도매원가(원)</div><input class="form-input" type="number" id="qs-cost-${productId}" value="${prod.cost||0}" placeholder="0"></div>
+        <div><div class="form-label">판매가(원)</div><input class="form-input" type="number" id="qs-price-${productId}" value="${prod.price||0}" placeholder="0"></div>
+      </div>
+      <div style="margin-bottom:8px;"><div class="form-label">비고(선택)</div><input class="form-input" id="qs-memo-${productId}" placeholder="입고처, 발주번호 등"></div>
+      <div id="qs-msg-${productId}" style="font-size:12px;color:#FF2400;min-height:14px;"></div>
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <button class="action-btn primary" onclick="saveQuickStockIn('${productId}')" style="flex:1;margin-bottom:0;background:#2d5a1b;border-color:#2d5a1b;">입고 저장</button>
+        <button class="action-btn" onclick="(()=>{const e=document.getElementById('prod-edit-${productId}');e.style.display='none';e.innerHTML='';e.dataset.mode='';})()" style="flex:1;margin-bottom:0;">취소</button>
+      </div>
+    </div>`;
+}
+
+async function saveQuickStockIn(productId){
+  const msg=document.getElementById('qs-msg-'+productId);
+  const date=document.getElementById('qs-date-'+productId)?.value;
+  const qty=parseInt(document.getElementById('qs-qty-'+productId)?.value||1)||1;
+  const cost=parseInt(document.getElementById('qs-cost-'+productId)?.value||0)||0;
+  const price=parseInt(document.getElementById('qs-price-'+productId)?.value||0)||0;
+  const memo=document.getElementById('qs-memo-'+productId)?.value||'';
+  if(!date){if(msg)msg.textContent='날짜를 입력해주세요.';return;}
+  const prod=products.find(p=>p.id===productId);
+  if(!prod)return;
+  const newStock=(prod.stock||0)+qty;
+  const updates={stock:newStock};
+  if(price>0)updates.price=price;
+  if(cost>0)updates.cost=cost;
+  const {error:pErr}=await sb.from('products').update(updates).eq('id',productId);
+  if(pErr){if(msg)msg.textContent='오류: '+pErr.message;return;}
+  await sb.from('inventory_logs').insert({
+    product_id:productId,type:'in',qty,
+    price:price||prod.price||0,cost:cost||prod.cost||0,
+    date,memo:memo||'입고',
+  });
+  Object.assign(prod,updates);
+  // 편집 영역 닫기
+  const editArea=document.getElementById('prod-edit-'+productId);
+  if(editArea){editArea.style.display='none';editArea.innerHTML='';editArea.dataset.mode='';}
+  showToast(`${prod.name} ${qty}개 입고 완료 (현재 재고: ${newStock}개)`);
+  // 재고 배지 업데이트
+  loadProductList();
 }
 
 function showInventoryInForm(){
@@ -3178,13 +3242,17 @@ async function loadProductList(){
             ${items.map(p=>`
             <div class="admin-row" style="padding:8px 12px;" id="prod-row-${p.id}">
               <div style="flex:1;min-width:0;">
-                <div style="font-size:13px;font-weight:500;color:var(--text-primary);">${p.name}${p.option?' <span style="color:var(--text-hint);font-weight:400;">/ '+p.option+'</span>':''}</div>
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                  <span style="font-size:13px;font-weight:500;color:var(--text-primary);">${p.name}${p.option?' <span style="color:var(--text-hint);font-weight:400;">/ '+p.option+'</span>':''}</span>
+                  ${(p.category==='frame'||p.category==='etc')?`<span style="font-size:12px;font-weight:600;padding:1px 8px;border-radius:99px;background:${(p.stock||0)===0?'#FFF0EE':(p.stock||0)<=(p.stock_min||1)?'#FFF8E8':'#F0F9F0'};color:${(p.stock||0)===0?'#c41c00':(p.stock||0)<=(p.stock_min||1)?'#7a4800':'#2d5a1b'};">재고 ${p.stock||0}</span>`:''}
+                </div>
                 <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">
                   ${p.price?'판매가 ₩'+formatPrice(p.price):'금액 미설정'}
                   ${p.cost?` · 원가 ₩${formatPrice(p.cost)} · 마진율 ${p.price?Math.round((p.price-p.cost)/p.price*100)+'%':'—'}`:''}
                 </div>
               </div>
               <div style="display:flex;gap:6px;flex-shrink:0;">
+                ${(p.category==='frame'||p.category==='etc')?`<button class="edit-btn" style="color:#2d5a1b;border-color:#2d5a1b;" onclick="showQuickStockIn('${p.id}')">+ 입고</button>`:''}
                 <button class="edit-btn" onclick="showEditProductForm('${p.id}')">수정</button>
                 <button class="edit-btn" style="color:#FF2400;border-color:#FF2400;" onclick="deleteProduct('${p.id}')">삭제</button>
               </div>
