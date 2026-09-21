@@ -2969,9 +2969,16 @@ function showSettingsPage(){
     <div style="font-size:11px;color:var(--text-hint);margin:-4px 0 8px;padding:0 2px;">※ 브랜드+상품명+옵션이 같으면 업데이트, 없으면 신규 추가</div>
     <div id="product-import-msg" style="font-size:12px;margin-bottom:8px;"></div>
     <div class="section-label">입출고 이력</div>
-    <div style="margin-bottom:6px;">
-      <button class="action-btn" onclick="showInventoryLog()" style="text-align:center;margin-bottom:0;">📋 입출고 이력 보기</button>
+    <div style="display:flex;gap:8px;margin-bottom:6px;">
+      <button class="action-btn" onclick="downloadInventoryExcel()" style="flex:1;text-align:center;margin-bottom:0;">📥 재고 현황 다운로드</button>
+      <button class="action-btn" onclick="showInventoryLog()" style="flex:1;text-align:center;margin-bottom:0;">📋 입출고 이력</button>
     </div>
+    <label class="action-btn" style="text-align:center;cursor:pointer;margin-bottom:6px;">
+      📤 재고 일괄 업데이트 (엑셀)
+      <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importInventoryExcel(event)">
+    </label>
+    <div id="inventory-import-msg" style="font-size:12px;margin-bottom:8px;"></div>
+    <div style="font-size:11px;color:var(--text-hint);margin:-4px 0 8px;padding:0 2px;">※ 재고현황 다운로드 후 재고수량/최소재고 수정하여 업로드</div>
     <div id="inventory-log-area"></div>
     <div class="section-label">직원 계정 관리</div>
     <div class="card" style="margin-bottom:12px;"><div id="staff-list"><div class="spinner"></div></div></div>
@@ -3032,6 +3039,95 @@ async function loadInventoryList(){
       </tbody>
     </table>
     </div>`;
+}
+
+// ── 재고 엑셀 다운로드 ──
+async function downloadInventoryExcel(){
+  if(!products||!products.length)await loadProducts();
+  const invProds=products.filter(p=>p.category==='frame'||p.category==='etc');
+  if(!invProds.length){showToast('재고 관리 대상 상품이 없습니다.');return;}
+  const wb=XLSX.utils.book_new();
+  const rows=[
+    ['id','브랜드','상품명','옵션','카테고리','현재재고','최소재고','판매가','도매원가'],
+    ...invProds.map(p=>[
+      p.id,
+      p.brand||'',
+      p.name||'',
+      p.option||'',
+      p.category==='frame'?'프레임':'기타',
+      p.stock||0,
+      p.stock_min||1,
+      p.price||0,
+      p.cost||0,
+    ])
+  ];
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  // 컬럼 너비 설정
+  ws['!cols']=[{wch:36},{wch:16},{wch:24},{wch:12},{wch:8},{wch:8},{wch:8},{wch:12},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,ws,'재고현황');
+  const today=new Date().toISOString().split('T')[0];
+  XLSX.writeFile(wb,`OOG_재고현황_${today}.xlsx`);
+  showToast('재고 현황 다운로드 완료!');
+}
+
+// ── 재고 엑셀 일괄 업데이트 ──
+async function importInventoryExcel(event){
+  const file=event.target.files[0];if(!file)return;
+  const msg=document.getElementById('inventory-import-msg');
+  if(msg){msg.style.color='var(--text-hint)';msg.textContent='파일 읽는 중...';}
+  const ab=await file.arrayBuffer();
+  const wb=XLSX.read(ab,{type:'array'});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  if(rows.length<2){if(msg){msg.style.color='#FF2400';msg.textContent='데이터가 없습니다.';}return;}
+  // 헤더 확인
+  const header=rows[0].map(h=>String(h).trim());
+  const idIdx=header.indexOf('id');
+  const stockIdx=header.indexOf('현재재고');
+  const minIdx=header.indexOf('최소재고');
+  const priceIdx=header.indexOf('판매가');
+  const costIdx=header.indexOf('도매원가');
+  if(idIdx<0||stockIdx<0){
+    if(msg){msg.style.color='#FF2400';msg.textContent='올바른 형식의 파일이 아닙니다. 재고현황 다운로드 파일을 사용해주세요.';}
+    return;
+  }
+  const dataRows=rows.slice(1).filter(r=>r[idIdx]);
+  let updated=0,errors=0;
+  if(msg){msg.style.color='var(--text-hint)';msg.textContent=`${dataRows.length}개 상품 업데이트 중...`;}
+  for(const row of dataRows){
+    const id=String(row[idIdx]).trim();
+    const updates={};
+    if(stockIdx>=0&&row[stockIdx]!=='')updates.stock=parseInt(row[stockIdx])||0;
+    if(minIdx>=0&&row[minIdx]!=='')updates.stock_min=parseInt(row[minIdx])||1;
+    if(priceIdx>=0&&row[priceIdx]!=='')updates.price=parseInt(row[priceIdx])||0;
+    if(costIdx>=0&&row[costIdx]!=='')updates.cost=parseInt(row[costIdx])||0;
+    if(!Object.keys(updates).length)continue;
+    const {error}=await sb.from('products').update(updates).eq('id',id);
+    if(error){errors++;console.error(error);}
+    else{
+      // 재고 조정 이력 기록
+      if(updates.stock!==undefined){
+        const prod=products.find(p=>p.id===id);
+        const prevStock=prod?.stock||0;
+        const diff=updates.stock-prevStock;
+        if(diff!==0){
+          await sb.from('inventory_logs').insert({
+            product_id:id,type:'adjust',qty:Math.abs(diff),
+            date:new Date().toISOString().split('T')[0],
+            memo:`실재고 조정 (${prevStock}→${updates.stock})`,
+          });
+        }
+      }
+      updated++;
+    }
+  }
+  await loadProducts();
+  loadProductList();
+  if(msg){
+    msg.style.color=errors?'#FF2400':'#2d5a1b';
+    msg.textContent=`완료: ${updated}개 업데이트${errors?` / ${errors}개 오류`:''}`;
+  }
+  event.target.value='';
 }
 
 // 상품 목록에서 바로 입고 처리
