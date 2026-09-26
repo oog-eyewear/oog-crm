@@ -3010,18 +3010,13 @@ function showSettingsPage(){
     <div id="add-product-area"></div>
     <!-- 통합 액션 버튼 -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
-      <button class="action-btn" onclick="downloadCurrentProducts()" style="text-align:center;margin-bottom:0;font-size:12px;">📥 상품목록 다운로드</button>
       <button class="action-btn" onclick="downloadInventoryExcel()" style="text-align:center;margin-bottom:0;font-size:12px;">📦 재고현황 다운로드</button>
-      <label class="action-btn" style="text-align:center;cursor:pointer;margin-bottom:0;font-size:12px;">
-        📤 상품 일괄 등록/수정
-        <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importProducts(event)">
-      </label>
       <label class="action-btn" style="text-align:center;cursor:pointer;margin-bottom:0;font-size:12px;">
         📤 재고 일괄 업데이트
         <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importInventoryExcel(event)">
       </label>
     </div>
-    <div style="font-size:11px;color:var(--text-hint);margin:0 0 4px;padding:0 2px;">※ 상품: 브랜드+상품명+옵션 동일 시 업데이트 / 재고: 다운로드 후 수량 수정하여 업로드</div>
+    <div style="font-size:11px;color:var(--text-hint);margin:0 0 4px;padding:0 2px;">※ 재고현황 다운로드 후 수량 수정 및 신규 상품 추가 가능</div>
     <div id="product-import-msg" style="font-size:12px;min-height:16px;"></div>
     <div id="inventory-import-msg" style="font-size:12px;min-height:16px;margin-bottom:4px;"></div>
     <button class="action-btn" onclick="showInventoryLog()" style="text-align:center;margin-bottom:8px;font-size:12px;width:100%;">📋 입출고 이력 보기</button>
