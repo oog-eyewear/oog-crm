@@ -3008,27 +3008,23 @@ function showSettingsPage(){
     <button class="action-btn" onclick="showAddProductForm('frame')">+ 프레임 상품 추가</button>
     <button class="action-btn" onclick="showAddProductForm('lens')">+ 렌즈 상품 추가</button>
     <div id="add-product-area"></div>
-    <div style="display:flex;gap:8px;margin-bottom:6px;">
-      <button class="action-btn" onclick="downloadCurrentProducts()" style="flex:1;text-align:center;margin-bottom:0;">📥 현재 상품목록 다운로드</button>
-      <button class="action-btn" onclick="downloadProductTemplate()" style="flex:1;text-align:center;margin-bottom:0;">📋 빈 템플릿 다운로드</button>
+    <!-- 통합 액션 버튼 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
+      <button class="action-btn" onclick="downloadCurrentProducts()" style="text-align:center;margin-bottom:0;font-size:12px;">📥 상품목록 다운로드</button>
+      <button class="action-btn" onclick="downloadInventoryExcel()" style="text-align:center;margin-bottom:0;font-size:12px;">📦 재고현황 다운로드</button>
+      <label class="action-btn" style="text-align:center;cursor:pointer;margin-bottom:0;font-size:12px;">
+        📤 상품 일괄 등록/수정
+        <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importProducts(event)">
+      </label>
+      <label class="action-btn" style="text-align:center;cursor:pointer;margin-bottom:0;font-size:12px;">
+        📤 재고 일괄 업데이트
+        <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importInventoryExcel(event)">
+      </label>
     </div>
-    <label class="action-btn" style="text-align:center;cursor:pointer;">
-      📤 엑셀로 상품 일괄 등록/업데이트
-      <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importProducts(event)">
-    </label>
-    <div style="font-size:11px;color:var(--text-hint);margin:-4px 0 8px;padding:0 2px;">※ 브랜드+상품명+옵션이 같으면 업데이트, 없으면 신규 추가</div>
-    <div id="product-import-msg" style="font-size:12px;margin-bottom:8px;"></div>
-    <div class="section-label">입출고 이력</div>
-    <div style="display:flex;gap:8px;margin-bottom:6px;">
-      <button class="action-btn" onclick="downloadInventoryExcel()" style="flex:1;text-align:center;margin-bottom:0;">📥 재고 현황 다운로드</button>
-      <button class="action-btn" onclick="showInventoryLog()" style="flex:1;text-align:center;margin-bottom:0;">📋 입출고 이력</button>
-    </div>
-    <label class="action-btn" style="text-align:center;cursor:pointer;margin-bottom:6px;">
-      📤 재고 일괄 업데이트 (엑셀)
-      <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importInventoryExcel(event)">
-    </label>
-    <div id="inventory-import-msg" style="font-size:12px;margin-bottom:8px;"></div>
-    <div style="font-size:11px;color:var(--text-hint);margin:-4px 0 8px;padding:0 2px;">※ 재고현황 다운로드 후 재고수량/최소재고 수정하여 업로드</div>
+    <div style="font-size:11px;color:var(--text-hint);margin:0 0 4px;padding:0 2px;">※ 상품: 브랜드+상품명+옵션 동일 시 업데이트 / 재고: 다운로드 후 수량 수정하여 업로드</div>
+    <div id="product-import-msg" style="font-size:12px;min-height:16px;"></div>
+    <div id="inventory-import-msg" style="font-size:12px;min-height:16px;margin-bottom:4px;"></div>
+    <button class="action-btn" onclick="showInventoryLog()" style="text-align:center;margin-bottom:8px;font-size:12px;width:100%;">📋 입출고 이력 보기</button>
     <div id="inventory-log-area"></div>
     <div class="section-label">직원 계정 관리</div>
     <div class="card" style="margin-bottom:12px;"><div id="staff-list"><div class="spinner"></div></div></div>
@@ -3419,7 +3415,7 @@ async function loadProductList(){
               <svg id="${gid}-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none" style="transition:transform 0.2s;transform:rotate(0deg);"><path d="M2 4l4 4 4-4" stroke="#9b9b9b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
           </div>
-          <div id="${gid}" style="display:none;">
+          <div id="${gid}" style="display:none;max-height:400px;overflow-y:auto;">
             ${items.map(p=>`
             <div class="admin-row" style="padding:8px 12px;" id="prod-row-${p.id}">
               <div style="flex:1;min-width:0;">
