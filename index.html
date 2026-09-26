@@ -196,7 +196,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let currentTab=0,currentCustomer=null,showingDetail=false,charts=[];
 let currentSort='visit',currentIndex='전체';
-let customers=[],currentUser=null,products=[];
+let customers=[],currentUser=null,products=[],isAdmin=false;
 let _statsData={purchases:[],cuMap:{}};
 let _savingNewCustomer=false;
 let currentPayMethod='card';
@@ -410,10 +410,13 @@ function showLogin(){
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app-outer').style.display='none';
 }
-function showApp(){
+async function showApp(){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app-outer').style.display='flex';
   document.getElementById('bottom-tab-bar').style.display='flex';
+  // 관리자 여부 체크
+  const {data:staffData}=await sb.from('staff').select('role').eq('email',currentUser?.email).single();
+  isAdmin=!staffData||staffData.role==='admin'; // staff 테이블에 없거나 admin이면 관리자
   switchMainTab('home');
 }
 async function doLogin(){
@@ -3026,11 +3029,12 @@ function showSettingsPage(){
     <button class="action-btn" onclick="showAddStaffForm()">+ 직원 계정 추가</button>
     <div id="add-staff-area"></div>
     <div class="section-label">데이터 관리</div>
+    ${isAdmin?`
     <button class="action-btn" onclick="exportExcel()">📥 고객 데이터 Excel 내보내기</button>
     <label class="action-btn" style="cursor:pointer;display:block;margin-bottom:8px;">
       📤 Excel에서 고객 데이터 가져오기
       <input type="file" accept=".xlsx,.xls" style="display:none;" onchange="importExcel(event)">
-    </label>
+    </label>`:'<div style="font-size:12px;color:var(--text-hint);padding:4px 0 8px;">🔒 데이터 내보내기는 관리자만 사용할 수 있습니다.</div>'}
     <div class="section-label">계정</div>
     <div class="card" style="margin-bottom:12px;">
       <div class="field-row"><span class="field-label">로그인 계정</span><span class="field-value" style="font-size:12px;">${currentUser?.email||''}</span></div>
@@ -3731,7 +3735,32 @@ async function loadStaffList(){
   const {data,error}=await sb.from('staff').select('*').order('created_at');
   if(error){el.innerHTML='<div style="font-size:13px;color:var(--text-hint);padding:4px 0;">직원 목록을 불러오려면 staff 테이블이 필요합니다.</div>';return;}
   if(!data||!data.length){el.innerHTML='<div style="font-size:13px;color:var(--text-hint);padding:4px 0;">등록된 직원이 없습니다.</div>';return;}
-  el.innerHTML=data.map(s=>`<div class="admin-row"><div><div class="admin-name">${s.name||'이름 없음'}</div><div class="admin-email">${s.email}</div></div></div>`).join('');
+  el.innerHTML=data.map(s=>{
+    const role=s.role||'staff';
+    const isAdminRole=role==='admin';
+    return `<div class="admin-row">
+      <div style="flex:1;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="admin-name">${s.name||'이름 없음'}</span>
+          <span style="font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:${isAdminRole?'#FFF0EE':'#F0F9F0'};color:${isAdminRole?'#c41c00':'#2d5a1b'};">${isAdminRole?'관리자':'직원'}</span>
+        </div>
+        <div class="admin-email">${s.email}</div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="edit-btn" onclick="toggleStaffRole('${s.id}','${role}')" style="font-size:11px;">${isAdminRole?'직원으로':'관리자로'}</button>
+        <button class="edit-btn" style="color:#FF2400;border-color:#FF2400;" onclick="deleteStaff('${s.id}','${s.email}')">삭제</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function toggleStaffRole(staffId, currentRole){
+  const newRole=currentRole==='admin'?'staff':'admin';
+  const label=newRole==='admin'?'관리자':'직원';
+  if(!confirm('이 계정을 '+label+'으로 변경할까요?'))return;
+  const {error}=await sb.from('staff').update({role:newRole}).eq('id',staffId);
+  if(error){alert('오류: '+error.message);return;}
+  showToast(label+'으로 변경됐습니다.');
+  loadStaffList();
 }
 function showAddStaffForm(){
   const area=document.getElementById('add-staff-area');if(!area)return;
@@ -3742,6 +3771,12 @@ function showAddStaffForm(){
       <div class="form-row"><div class="form-label">이름</div><input class="form-input" id="staff-name" placeholder="홍길동"></div>
       <div class="form-row"><div class="form-label">이메일</div><input class="form-input" type="email" id="staff-email" placeholder="staff@email.com"></div>
       <div class="form-row"><div class="form-label">임시 비밀번호</div><input class="form-input" type="password" id="staff-pw" placeholder="8자 이상"></div>
+      <div class="form-row"><div class="form-label">권한</div>
+        <select class="form-input" id="staff-role">
+          <option value="staff">직원 (데이터 내보내기 불가)</option>
+          <option value="admin">관리자 (모든 기능 사용 가능)</option>
+        </select>
+      </div>
       <button class="action-btn primary" onclick="addStaff()" style="margin-top:8px;margin-bottom:0;">계정 생성</button>
       <div id="staff-msg" style="font-size:12px;margin-top:8px;color:#FF2400;"></div>
     </div>`;
@@ -3756,7 +3791,8 @@ async function addStaff(){
   msg.textContent='계정 생성 중...';
   const {data:authData,error:authErr}=await sb.auth.signUp({email,password:pw});
   if(authErr){msg.textContent='오류: '+authErr.message;return;}
-  await sb.from('staff').insert({email,name,id:authData.user?.id});
+  const role=document.getElementById('staff-role')?.value||'staff';
+  await sb.from('staff').insert({email,name,id:authData.user?.id,role});
   msg.style.color='#2d5a1b';msg.textContent='✓ '+email+' 계정이 생성되었습니다.';
   loadStaffList();
 }
@@ -3951,10 +3987,10 @@ function renderStatsPage(purchases,cuMap){
   else if(statsTab==='ranking') body=renderRanking(purchases,cuMap);
   else if(statsTab==='margin') body=renderMargin(purchases);
   else body=renderProductStats(purchases);
-  const dlBtn=`<button onclick="downloadStatsExcel()" style="display:flex;align-items:center;gap:6px;background:#fff;border:0.5px solid var(--border);border-radius:8px;padding:8px 14px;font-size:13px;color:var(--text-secondary);cursor:pointer;margin-bottom:12px;width:100%;">
+  const dlBtn=isAdmin?`<button onclick="downloadStatsExcel()" style="display:flex;align-items:center;gap:6px;background:#fff;border:0.5px solid var(--border);border-radius:8px;padding:8px 14px;font-size:13px;color:var(--text-secondary);cursor:pointer;margin-bottom:12px;width:100%;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
     현재 화면 엑셀로 다운로드
-  </button>`;
+  </button>`:'';
   document.getElementById('main-content').innerHTML=tabBar+dlBtn+body+'<div style="height:20px;"></div>';
   setTimeout(()=>{
     if(statsTab==='monthly') drawMonthlyChart(purchases);
