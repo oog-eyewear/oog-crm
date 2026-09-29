@@ -1167,7 +1167,7 @@ function renderPurchaseTab(cu){
       const realIdx=cu.purchases.indexOf(p);
       const fp=parsePrice(p.frame_price||0),lp=parsePrice(p.lens_price||0);
       const finalP=parsePrice(p.final_price||p.price||0);
-      const payLabel=p.payment_method==='cash'?'현금':p.payment_method==='mixed'?'카드+현금':'카드';
+      const payLabel=p.payment_method==='cash'?'현금':p.payment_method==='mixed'?'카드+현금':p.payment_method==='onnuri'?'온누리상품권':'카드';
       const hasReturn=!!p._return;
       const strikeStyle=hasReturn?'text-decoration:line-through;opacity:0.5;':'';
 
@@ -1386,6 +1386,7 @@ async function showPurchaseForm(forceOpen){
         <button class="pay-btn active" id="pay-card" onclick="setPayMethod('card')">카드</button>
         <button class="pay-btn" id="pay-cash" onclick="setPayMethod('cash')">현금</button>
         <button class="pay-btn" id="pay-mixed" onclick="setPayMethod('mixed')">카드+현금</button>
+        <button class="pay-btn" id="pay-onnuri" onclick="setPayMethod('onnuri')">온누리</button>
       </div>
       <div id="p-mixed-wrap" style="display:none;margin-top:8px;">
         <div class="form-grid" style="gap:8px;">
@@ -1591,6 +1592,7 @@ function onFrame2OptionChange(){
 }
 function setPayMethod(m){
   currentPayMethod=m;
+  // 온누리는 카드+현금 혼합 입력 숨김
   ['card','cash','mixed'].forEach(k=>{
     const el=document.getElementById('pay-'+k);
     if(el)el.classList.toggle('active',k===m);
@@ -1727,7 +1729,7 @@ async function savePurchase(){
     discount_value:totalDisc||0,
     final_price:finalPrice,payment_method:currentPayMethod,
     payment_card:currentPayMethod==='card'?finalPrice:currentPayMethod==='mixed'?(parseInt(g('p-pay-card-amt')||0)||0):0,
-    payment_cash:currentPayMethod==='cash'?finalPrice:currentPayMethod==='mixed'?(parseInt(g('p-pay-cash-amt')||0)||0):0,
+    payment_cash:currentPayMethod==='cash'?finalPrice:currentPayMethod==='mixed'?(parseInt(g('p-pay-cash-amt')||0)||0):currentPayMethod==='onnuri'?0:0,
     lens:g('p-lens-rx'),
     memo:memo
   };
@@ -1844,6 +1846,7 @@ async function showPurchaseEditForm(idx){
         <button class="pay-btn ${p.payment_method==='card'||!p.payment_method?'active':''}" onclick="setPePayMethod(${idx},'card')">카드</button>
         <button class="pay-btn ${p.payment_method==='cash'?'active':''}" onclick="setPePayMethod(${idx},'cash')">현금</button>
         <button class="pay-btn ${p.payment_method==='mixed'?'active':''}" onclick="setPePayMethod(${idx},'mixed')">카드+현금</button>
+        <button class="pay-btn ${p.payment_method==='onnuri'?'active':''}" onclick="setPePayMethod(${idx},'onnuri')">온누리</button>
       </div>
       <div id="pe-mixed-wrap-${idx}" style="display:${p.payment_method==='mixed'?'block':'none'};margin-top:8px;">
         <div class="form-grid" style="gap:8px;">
@@ -4060,7 +4063,7 @@ function renderCalendar(purchases, cuMap){
         <div style="font-size:13px;font-weight:600;">${_calSelectedDate}</div>
         <div style="font-size:15px;font-weight:700;color:#FF2400;">₩${formatPrice(selTotal)}</div>
       </div>
-      ${payBadge(pay.card,pay.cash)}
+      ${payBadge(pay.card,pay.cash,pay.onnuri||0)}
       ${selPurchases.length?`
       <div style="margin-top:12px;border-top:0.5px solid #EFEFEF;padding-top:12px;">
         ${selPurchases.map(p=>{
@@ -4116,23 +4119,25 @@ function selectCalDate(date){
 }
 
 function calcPaySummary(list){
-  let card=0,cash=0,mixed=0;
+  let card=0,cash=0,mixed=0,onnuri=0;
   list.forEach(p=>{
     const amt=parsePrice(p.final_price||p.price);
     if(p.payment_method==='cash') cash+=amt;
+    else if(p.payment_method==='onnuri') onnuri+=amt;
     else if(p.payment_method==='mixed'){
       card+=parsePrice(p.payment_card||0);
       cash+=parsePrice(p.payment_cash||0);
       mixed+=amt;
     } else card+=amt;
   });
-  return {card,cash,mixed};
+  return {card,cash,mixed,onnuri};
 }
-function payBadge(card,cash){
-  return `<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
-    <span style="font-size:11px;background:#EEF2FF;color:#3730a3;padding:2px 8px;border-radius:99px;">카드 ₩${formatPrice(card)}</span>
-    <span style="font-size:11px;background:#F0F9F0;color:#2d5a1b;padding:2px 8px;border-radius:99px;">현금 ₩${formatPrice(cash)}</span>
-  </div>`;
+function payBadge(card,cash,onnuri){
+  const badges=[];
+  if(card>0)badges.push(`<span style="font-size:11px;background:#EEF2FF;color:#3730a3;padding:2px 8px;border-radius:99px;">카드 ₩${formatPrice(card)}</span>`);
+  if(cash>0)badges.push(`<span style="font-size:11px;background:#F0F9F0;color:#2d5a1b;padding:2px 8px;border-radius:99px;">현금 ₩${formatPrice(cash)}</span>`);
+  if(onnuri>0)badges.push(`<span style="font-size:11px;background:#FFF8E8;color:#7a4800;padding:2px 8px;border-radius:99px;">온누리 ₩${formatPrice(onnuri)}</span>`);
+  return badges.length?`<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">${badges.join('')}</div>`:'';
 }
 function renderMonthly(purchases){
   const map={},cardMap={},cashMap={};
