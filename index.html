@@ -1253,6 +1253,12 @@ function renderPurchaseTab(cu){
             ${(p.deposit_paid||0)>0&&!hasRemaining?`<span style="background:#F0F9F0;color:#2d5a1b;font-weight:600;padding:2px 8px;border-radius:99px;">완납</span>`:''}
           </span>
         </div>
+        ${hasRemaining?`
+        <div id="balance-pay-area-${p.id}" style="margin-top:0;"></div>
+        <div style="margin-top:8px;">
+          <button onclick="toggleBalancePayForm('${p.id}',${parsePrice(p.final_price||p.price)},${p.deposit_remaining})" style="width:100%;padding:8px;font-size:12px;font-weight:600;color:#c41c00;background:#FFF0EE;border:1px solid #fcc;border-radius:8px;cursor:pointer;">💰 잔금 수납</button>
+        </div>`:''}
+
         ${(()=>{
           const exam=cu.exams&&cu.exams.find(e=>e.date===p.date);
           if(exam&&(exam.re_sph||exam.le_sph)){
@@ -1706,6 +1712,82 @@ function calcTotal(){
   const dfd=document.getElementById('p-disc-frame-display');if(dfd)dfd.textContent='-₩'+formatPrice(frameDisc);
   const dlr=document.getElementById('p-disc-lens-row');if(dlr)dlr.style.display=lensDisc>0?'flex':'none';
   const dld=document.getElementById('p-disc-lens-display');if(dld)dld.textContent='-₩'+formatPrice(lensDisc);
+}
+
+function toggleBalancePayForm(purchaseId, finalAmt, remaining){
+  const area=document.getElementById('balance-pay-area-'+purchaseId);
+  if(!area)return;
+  if(area.innerHTML){area.innerHTML='';return;}
+  const today=new Date().toISOString().slice(0,10);
+  area.innerHTML=`
+    <div style="background:#FFF8F8;border:1px solid #fcc;border-radius:10px;padding:14px;margin-top:8px;">
+      <div style="font-size:13px;font-weight:600;color:#c41c00;margin-bottom:10px;">💰 잔금 수납 — 잔액 ₩${formatPrice(remaining)}</div>
+      <div style="margin-bottom:8px;">
+        <div class="form-label">수납 날짜</div>
+        <input class="form-input" type="date" id="bp-date-${purchaseId}" value="${today}">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px;">
+        <div><div class="form-label">카드 (원)</div>
+          <input class="form-input" type="number" placeholder="0" id="bp-card-${purchaseId}" oninput="calcBpCheck('${purchaseId}',${remaining})" min="0"></div>
+        <div><div class="form-label">현금 (원)</div>
+          <input class="form-input" type="number" placeholder="0" id="bp-cash-${purchaseId}" oninput="calcBpCheck('${purchaseId}',${remaining})" min="0"></div>
+        <div><div class="form-label">온누리 (원)</div>
+          <input class="form-input" type="number" placeholder="0" id="bp-onnuri-${purchaseId}" oninput="calcBpCheck('${purchaseId}',${remaining})" min="0"></div>
+      </div>
+      <div id="bp-check-${purchaseId}" style="font-size:11px;min-height:16px;margin-bottom:8px;"></div>
+      <div id="bp-msg-${purchaseId}" style="font-size:12px;color:#FF2400;min-height:16px;margin-bottom:6px;"></div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="saveBalancePay('${purchaseId}',${finalAmt},${remaining})" style="flex:1;padding:10px;font-size:13px;font-weight:600;color:#fff;background:#c41c00;border:none;border-radius:8px;cursor:pointer;">수납 완료</button>
+        <button onclick="document.getElementById('balance-pay-area-${purchaseId}').innerHTML=''" style="padding:10px 16px;font-size:13px;color:var(--text-secondary);background:#F5F5F5;border:none;border-radius:8px;cursor:pointer;">취소</button>
+      </div>
+    </div>`;
+}
+function calcBpCheck(purchaseId, remaining){
+  const c=parseInt(document.getElementById('bp-card-'+purchaseId)?.value||0)||0;
+  const h=parseInt(document.getElementById('bp-cash-'+purchaseId)?.value||0)||0;
+  const o=parseInt(document.getElementById('bp-onnuri-'+purchaseId)?.value||0)||0;
+  const sum=c+h+o;
+  const el=document.getElementById('bp-check-'+purchaseId);
+  if(!el)return;
+  if(sum===0){el.textContent='';return;}
+  if(sum===remaining){el.style.color='#2d5a1b';el.textContent='✓ 잔액과 일치 ₩'+formatPrice(sum);}
+  else if(sum<remaining){el.style.color='#FF2400';el.textContent='⚠ 합계 ₩'+formatPrice(sum)+' — 잔액보다 '+formatPrice(remaining-sum)+'원 부족';}
+  else{el.style.color='#7a4800';el.textContent='⚠ 합계 ₩'+formatPrice(sum)+' — 잔액보다 '+formatPrice(sum-remaining)+'원 초과';}
+}
+async function saveBalancePay(purchaseId, finalAmt, oldRemaining){
+  const card=parseInt(document.getElementById('bp-card-'+purchaseId)?.value||0)||0;
+  const cash=parseInt(document.getElementById('bp-cash-'+purchaseId)?.value||0)||0;
+  const onnuri=parseInt(document.getElementById('bp-onnuri-'+purchaseId)?.value||0)||0;
+  const date=document.getElementById('bp-date-'+purchaseId)?.value||new Date().toISOString().slice(0,10);
+  const msg=document.getElementById('bp-msg-'+purchaseId);
+  const sum=card+cash+onnuri;
+  if(sum===0){if(msg)msg.textContent='수납 금액을 입력해주세요.';return;}
+  // 기존 구매건 조회
+  const{data:orig,error:fetchErr}=await sb.from('purchases').select('*').eq('id',purchaseId).single();
+  if(fetchErr||!orig){if(msg)msg.textContent='구매 내역 조회 오류';return;}
+  const newDepositPaid=(parsePrice(orig.deposit_paid||0))+sum;
+  const newRemaining=Math.max(0,finalAmt-newDepositPaid);
+  // 기존 결제 수단 금액에 누적
+  const newCard=(parsePrice(orig.payment_card||0))+card;
+  const newCash=(parsePrice(orig.payment_cash||0))+cash;
+  const newOnnuri=(parsePrice(orig.payment_onnuri||0))+onnuri;
+  const cnt=[newCard>0,newCash>0,newOnnuri>0].filter(Boolean).length;
+  const newMethod=cnt>1?'mixed':newCash>0?'cash':newOnnuri>0?'onnuri':'card';
+  // 메모에 잔금 수납 이력 추가
+  const memoNote=`[잔금 ${date}: 카드${card?'₩'+formatPrice(card):'0'} / 현금${cash?'₩'+formatPrice(cash):'0'} / 온누리${onnuri?'₩'+formatPrice(onnuri):'0'}]`;
+  const newMemo=orig.memo?orig.memo+'\n'+memoNote:memoNote;
+  const{error}=await sb.from('purchases').update({
+    deposit_paid:newDepositPaid,
+    deposit_remaining:newRemaining,
+    payment_card:newCard,
+    payment_cash:newCash,
+    payment_onnuri:newOnnuri,
+    payment_method:newMethod,
+    memo:newMemo,
+  }).eq('id',purchaseId);
+  if(error){if(msg)msg.textContent='저장 오류: '+error.message;return;}
+  // 화면 갱신
+  await showDetail(currentCustomer.id);
 }
 
 async function savePurchase(){
