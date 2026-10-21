@@ -1183,7 +1183,16 @@ function renderPurchaseTab(cu){
       const realIdx=cu.purchases.indexOf(p);
       const fp=parsePrice(p.frame_price||0),lp=parsePrice(p.lens_price||0);
       const finalP=parsePrice(p.final_price||p.price||0);
-      const payLabel=p.payment_method==='cash'?'현금':p.payment_method==='mixed'?'카드+현금':p.payment_method==='onnuri'?'온누리상품권':'카드';
+      const payLabel=(()=>{
+        const c=parsePrice(p.payment_card||0),h=parsePrice(p.payment_cash||0),o=parsePrice(p.payment_onnuri||0);
+        const parts=[];
+        if(c>0)parts.push('카드 ₩'+formatPrice(c));
+        if(h>0)parts.push('현금 ₩'+formatPrice(h));
+        if(o>0)parts.push('온누리 ₩'+formatPrice(o));
+        if(parts.length>0)return parts.join(' / ');
+        return p.payment_method==='cash'?'현금':p.payment_method==='onnuri'?'온누리상품권':'카드';
+      })();
+      const hasRemaining=(p.deposit_remaining||0)>0;
       const hasReturn=!!p._return;
       const strikeStyle=hasReturn?'text-decoration:line-through;opacity:0.5;':'';
 
@@ -1238,8 +1247,10 @@ function renderPurchaseTab(cu){
           ${p.discount_frame_value?`<span style="color:#FF2400;">프레임할인 ${p.discount_frame_type==='percent'?p.discount_frame_value+'%':'₩'+formatPrice(p.discount_frame_value)}</span>`:''}
           ${p.discount_lens_value?`<span style="color:#FF2400;">렌즈할인 ${p.discount_lens_type==='percent'?p.discount_lens_value+'%':'₩'+formatPrice(p.discount_lens_value)}</span>`:''}
           ${!p.discount_frame_value&&!p.discount_lens_value&&p.discount_value?`<span style="color:#FF2400;">할인 ₩${formatPrice(p.discount_value)}</span>`:''}
-          <span style="margin-left:auto;background:#F5F5F5;padding:2px 8px;border-radius:99px;">
-            ${payLabel}${p.payment_method==='mixed'&&(p.payment_card||p.payment_cash)?` (카드 ₩${formatPrice(p.payment_card||0)} / 현금 ₩${formatPrice(p.payment_cash||0)})`:''}
+          <span style="margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+            <span style="background:#F5F5F5;padding:2px 8px;border-radius:99px;">${payLabel}</span>
+            ${hasRemaining?`<span style="background:#FFF0EE;color:#c41c00;font-weight:600;padding:2px 8px;border-radius:99px;">잔액 ₩${formatPrice(p.deposit_remaining)}</span>`:''}
+            ${(p.deposit_paid||0)>0&&!hasRemaining?`<span style="background:#F0F9F0;color:#2d5a1b;font-weight:600;padding:2px 8px;border-radius:99px;">완납</span>`:''}
           </span>
         </div>
         ${(()=>{
@@ -1398,22 +1409,25 @@ async function showPurchaseForm(forceOpen){
         <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:600;border-top:0.5px solid #D0D0D0;padding-top:8px;margin-top:4px;"><span>최종 금액</span><span id="p-final">₩0</span></div>
       </div>
       <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 8px;">결제 수단</div>
-      <div class="pay-toggle">
-        <button class="pay-btn active" id="pay-card" onclick="setPayMethod('card')">카드</button>
-        <button class="pay-btn" id="pay-cash" onclick="setPayMethod('cash')">현금</button>
-        <button class="pay-btn" id="pay-mixed" onclick="setPayMethod('mixed')">카드+현금</button>
-        <button class="pay-btn" id="pay-onnuri" onclick="setPayMethod('onnuri')">온누리</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:6px;">
+        <div><div class="form-label">카드 (원)</div>
+          <input class="form-input" type="number" placeholder="0" id="p-pay-card-amt" oninput="calcPayTotal()" min="0"></div>
+        <div><div class="form-label">현금 (원)</div>
+          <input class="form-input" type="number" placeholder="0" id="p-pay-cash-amt" oninput="calcPayTotal()" min="0"></div>
+        <div><div class="form-label">온누리 (원)</div>
+          <input class="form-input" type="number" placeholder="0" id="p-pay-onnuri-amt" oninput="calcPayTotal()" min="0"></div>
       </div>
-      <div id="p-mixed-wrap" style="display:none;margin-top:8px;">
-        <div class="form-grid" style="gap:8px;">
-          <div><div class="form-label">카드 결제액 (원)</div>
-            <input class="form-input" type="number" placeholder="0" id="p-pay-card-amt" oninput="calcMixedTotal()" min="0"></div>
-          <div><div class="form-label">현금 결제액 (원)</div>
-            <input class="form-input" type="number" placeholder="0" id="p-pay-cash-amt" oninput="calcMixedTotal()" min="0"></div>
+      <div style="font-size:11px;color:var(--text-hint);margin-bottom:2px;" id="p-pay-check"></div>
+      <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:12px 0 8px;">선금 / 잔액</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px;">
+        <div><div class="form-label">선금 납입액 (원)</div>
+          <input class="form-input" type="number" placeholder="0" id="p-deposit-paid" oninput="calcDepositRemaining()" min="0"></div>
+        <div><div class="form-label">잔액</div>
+          <div class="form-input" id="p-deposit-remaining" style="background:#F5F5F5;color:var(--text-secondary);display:flex;align-items:center;">—</div>
         </div>
-        <div style="font-size:11px;color:var(--text-hint);margin-top:4px;" id="p-mixed-check"></div>
       </div>
-      <button class="action-btn primary" onclick="savePurchase()" style="margin-top:16px;">저장</button>
+      <div style="font-size:11px;color:var(--text-hint);margin-bottom:12px;">※ 선금이 없으면 비워두세요.</div>
+      <button class="action-btn primary" onclick="savePurchase()" style="margin-top:4px;">저장</button>
     </div>`;
 }
 
@@ -1606,31 +1620,32 @@ function onFrame2OptionChange(){
     if(priceEl){priceEl.value=matched.price;calcTotal();}
   }
 }
-function setPayMethod(m){
-  currentPayMethod=m;
-  // 온누리는 카드+현금 혼합 입력 숨김
-  ['card','cash','mixed'].forEach(k=>{
-    const el=document.getElementById('pay-'+k);
-    if(el)el.classList.toggle('active',k===m);
-  });
-  const wrap=document.getElementById('p-mixed-wrap');
-  if(wrap)wrap.style.display=m==='mixed'?'block':'none';
-  if(m!=='mixed'){
-    const ca=document.getElementById('p-pay-card-amt');if(ca)ca.value='';
-    const ch=document.getElementById('p-pay-cash-amt');if(ch)ch.value='';
-  }
-}
-function calcMixedTotal(){
+function setPayMethod(m){currentPayMethod=m;} // 하위호환용 (사용 안 함)
+function calcPayTotal(){
   const cardAmt=parseInt(document.getElementById('p-pay-card-amt')?.value||0)||0;
   const cashAmt=parseInt(document.getElementById('p-pay-cash-amt')?.value||0)||0;
+  const onnuriAmt=parseInt(document.getElementById('p-pay-onnuri-amt')?.value||0)||0;
   const finalEl=document.getElementById('p-final');
   const finalAmt=finalEl?parsePrice(finalEl.textContent):0;
-  const sum=cardAmt+cashAmt;
-  const checkEl=document.getElementById('p-mixed-check');
+  const sum=cardAmt+cashAmt+onnuriAmt;
+  const checkEl=document.getElementById('p-pay-check');
   if(!checkEl)return;
-  if(sum===0)checkEl.textContent='';
-  else if(sum===finalAmt)checkEl.style.color='#2d5a1b',checkEl.textContent='✓ 합계 ₩'+formatPrice(sum)+' — 최종금액과 일치';
-  else checkEl.style.color='#FF2400',checkEl.textContent='⚠ 합계 ₩'+formatPrice(sum)+' — 최종금액(₩'+formatPrice(finalAmt)+')과 차이: '+formatPrice(Math.abs(finalAmt-sum))+'원';
+  if(sum===0){checkEl.textContent='';return;}
+  if(sum===finalAmt){checkEl.style.color='#2d5a1b';checkEl.textContent='✓ 합계 ₩'+formatPrice(sum)+' — 최종금액과 일치';}
+  else{checkEl.style.color='#FF2400';checkEl.textContent='⚠ 합계 ₩'+formatPrice(sum)+' — 최종금액(₩'+formatPrice(finalAmt)+')과 차이 '+formatPrice(Math.abs(finalAmt-sum))+'원';}
+  calcDepositRemaining();
+}
+function calcMixedTotal(){calcPayTotal();} // 하위호환
+function calcDepositRemaining(){
+  const finalEl=document.getElementById('p-final');
+  const finalAmt=finalEl?parsePrice(finalEl.textContent):0;
+  const depositPaid=parseInt(document.getElementById('p-deposit-paid')?.value||0)||0;
+  const remainEl=document.getElementById('p-deposit-remaining');
+  if(!remainEl)return;
+  if(!depositPaid){remainEl.textContent='—';remainEl.style.color='var(--text-secondary)';return;}
+  const remaining=finalAmt-depositPaid;
+  if(remaining<=0){remainEl.textContent='완납';remainEl.style.color='#2d5a1b';}
+  else{remainEl.textContent='잔액 ₩'+formatPrice(remaining);remainEl.style.color='#c41c00';}
 }
 
 function getFrameItems(){
@@ -1743,9 +1758,25 @@ async function savePurchase(){
     discount_lens_type:dlv?dltype:null,discount_lens_value:dlv||0,
     discount_lens_extra:dlextra||0,
     discount_value:totalDisc||0,
-    final_price:finalPrice,payment_method:currentPayMethod,
-    payment_card:currentPayMethod==='card'?finalPrice:currentPayMethod==='mixed'?(parseInt(g('p-pay-card-amt')||0)||0):0,
-    payment_cash:currentPayMethod==='cash'?finalPrice:currentPayMethod==='mixed'?(parseInt(g('p-pay-cash-amt')||0)||0):currentPayMethod==='onnuri'?0:0,
+    final_price:finalPrice,
+    payment_card:parseInt(g('p-pay-card-amt')||0)||0,
+    payment_cash:parseInt(g('p-pay-cash-amt')||0)||0,
+    payment_onnuri:parseInt(g('p-pay-onnuri-amt')||0)||0,
+    payment_method:(()=>{
+      const c=parseInt(g('p-pay-card-amt')||0)||0;
+      const h=parseInt(g('p-pay-cash-amt')||0)||0;
+      const o=parseInt(g('p-pay-onnuri-amt')||0)||0;
+      const cnt=[c>0,h>0,o>0].filter(Boolean).length;
+      if(cnt>1)return'mixed';
+      if(h>0)return'cash';
+      if(o>0)return'onnuri';
+      return'card';
+    })(),
+    deposit_paid:parseInt(g('p-deposit-paid')||0)||0,
+    deposit_remaining:(()=>{
+      const dp=parseInt(g('p-deposit-paid')||0)||0;
+      return dp>0?Math.max(0,finalPrice-dp):0;
+    })(),
     lens:g('p-lens-rx'),
     memo:memo
   };
@@ -1858,18 +1889,21 @@ async function showPurchaseEditForm(idx){
         <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:600;border-top:0.5px solid #D0D0D0;padding-top:6px;"><span>최종</span><span id="pe-fin-${idx}">—</span></div>
       </div>
       <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">결제 수단</div>
-      <div class="pay-toggle" id="pe-pay-${idx}">
-        <button class="pay-btn ${p.payment_method==='card'||!p.payment_method?'active':''}" onclick="setPePayMethod(${idx},'card')">카드</button>
-        <button class="pay-btn ${p.payment_method==='cash'?'active':''}" onclick="setPePayMethod(${idx},'cash')">현금</button>
-        <button class="pay-btn ${p.payment_method==='mixed'?'active':''}" onclick="setPePayMethod(${idx},'mixed')">카드+현금</button>
-        <button class="pay-btn ${p.payment_method==='onnuri'?'active':''}" onclick="setPePayMethod(${idx},'onnuri')">온누리</button>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px;">
+        <div><div class="form-label">카드 (원)</div>
+          <input class="form-input" type="number" value="${p.payment_card||0}" id="pe-card-amt-${idx}" oninput="calcPePayTotal(${idx})" min="0"></div>
+        <div><div class="form-label">현금 (원)</div>
+          <input class="form-input" type="number" value="${p.payment_cash||0}" id="pe-cash-amt-${idx}" oninput="calcPePayTotal(${idx})" min="0"></div>
+        <div><div class="form-label">온누리 (원)</div>
+          <input class="form-input" type="number" value="${p.payment_onnuri||0}" id="pe-onnuri-amt-${idx}" oninput="calcPePayTotal(${idx})" min="0"></div>
       </div>
-      <div id="pe-mixed-wrap-${idx}" style="display:${p.payment_method==='mixed'?'block':'none'};margin-top:8px;">
-        <div class="form-grid" style="gap:8px;">
-          <div><div class="form-label">카드 결제액 (원)</div>
-            <input class="form-input" type="number" value="${p.payment_card||0}" id="pe-card-amt-${idx}" min="0"></div>
-          <div><div class="form-label">현금 결제액 (원)</div>
-            <input class="form-input" type="number" value="${p.payment_cash||0}" id="pe-cash-amt-${idx}" min="0"></div>
+      <div style="font-size:11px;color:var(--text-hint);margin-bottom:8px;" id="pe-pay-check-${idx}"></div>
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">선금 / 잔액</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <div><div class="form-label">선금 납입액 (원)</div>
+          <input class="form-input" type="number" value="${p.deposit_paid||0}" id="pe-deposit-paid-${idx}" oninput="calcPeDepositRemaining(${idx})" min="0"></div>
+        <div><div class="form-label">잔액</div>
+          <div class="form-input" id="pe-deposit-remaining-${idx}" style="background:#F5F5F5;color:var(--text-secondary);display:flex;align-items:center;">${(p.deposit_remaining||0)>0?'잔액 ₩'+formatPrice(p.deposit_remaining):(p.deposit_paid||0)>0?'완납':'—'}</div>
         </div>
       </div>
       <div class="form-row"><div class="form-label">비고</div><textarea class="form-input" id="pe-memo-${idx}" rows="2" style="resize:vertical;line-height:1.6;" placeholder="고객 특성, 선호도, 특이사항...">${p.memo||''}</textarea></div>
@@ -1909,19 +1943,44 @@ async function showPurchaseEditForm(idx){
     </div>`;
   calcEditTotal(idx);
 }
-function setPePayMethod(idx,m){
-  const c=document.getElementById('pe-pay-'+idx);if(!c)return;
-  const methods=['card','cash','mixed'];
-  c.querySelectorAll('.pay-btn').forEach((b,i)=>b.classList.toggle('active',methods[i]===m));
-  const wrap=document.getElementById('pe-mixed-wrap-'+idx);
-  if(wrap)wrap.style.display=m==='mixed'?'block':'none';
-}
+function setPePayMethod(idx,m){} // 하위호환용
 function getPePayMethod(idx){
-  const c=document.getElementById('pe-pay-'+idx);if(!c)return'card';
-  const methods=['card','cash','mixed'];
-  const btns=[...c.querySelectorAll('.pay-btn')];
-  const ai=btns.findIndex(b=>b.classList.contains('active'));
-  return methods[ai]||'card';
+  const c=parseInt(document.getElementById('pe-card-amt-'+idx)?.value||0)||0;
+  const h=parseInt(document.getElementById('pe-cash-amt-'+idx)?.value||0)||0;
+  const o=parseInt(document.getElementById('pe-onnuri-amt-'+idx)?.value||0)||0;
+  const cnt=[c>0,h>0,o>0].filter(Boolean).length;
+  if(cnt>1)return'mixed';
+  if(h>0)return'cash';
+  if(o>0)return'onnuri';
+  return'card';
+}
+function calcPePayTotal(idx){
+  const c=parseInt(document.getElementById('pe-card-amt-'+idx)?.value||0)||0;
+  const h=parseInt(document.getElementById('pe-cash-amt-'+idx)?.value||0)||0;
+  const o=parseInt(document.getElementById('pe-onnuri-amt-'+idx)?.value||0)||0;
+  const sum=c+h+o;
+  const checkEl=document.getElementById('pe-pay-check-'+idx);
+  // 최종금액 참조 (수정폼의 calcEditTotal이 pe-final-{idx} 또는 유사 엘리먼트 사용)
+  const finalEl=document.getElementById('pe-final-'+idx)||document.getElementById('pe-total-'+idx);
+  const finalAmt=finalEl?parsePrice(finalEl.textContent):0;
+  if(!checkEl)return;
+  if(sum===0){checkEl.textContent='';return;}
+  if(finalAmt>0){
+    if(sum===finalAmt){checkEl.style.color='#2d5a1b';checkEl.textContent='✓ 합계 ₩'+formatPrice(sum)+' — 최종금액과 일치';}
+    else{checkEl.style.color='#FF2400';checkEl.textContent='⚠ 합계 ₩'+formatPrice(sum)+' — 최종금액과 차이 '+formatPrice(Math.abs(finalAmt-sum))+'원';}
+  }
+  calcPeDepositRemaining(idx);
+}
+function calcPeDepositRemaining(idx){
+  const finalEl=document.getElementById('pe-final-'+idx)||document.getElementById('pe-total-'+idx);
+  const finalAmt=finalEl?parsePrice(finalEl.textContent):0;
+  const dp=parseInt(document.getElementById('pe-deposit-paid-'+idx)?.value||0)||0;
+  const remEl=document.getElementById('pe-deposit-remaining-'+idx);
+  if(!remEl)return;
+  if(!dp){remEl.textContent='—';remEl.style.color='var(--text-secondary)';return;}
+  const rem=finalAmt>0?Math.max(0,finalAmt-dp):0;
+  if(rem<=0){remEl.textContent='완납';remEl.style.color='#2d5a1b';}
+  else{remEl.textContent='잔액 ₩'+formatPrice(rem);remEl.style.color='#c41c00';}
 }
 // ── 수정폼 상품 아이템 HTML ──
 let _editItemCount={};
@@ -2104,8 +2163,14 @@ async function savePurchaseEdit(idx){
     final_price:final,price:String(final),
     cost_total:costTotal||0,
     payment_method:getPePayMethod(idx),
-    payment_card:getPePayMethod(idx)==='card'?final:getPePayMethod(idx)==='mixed'?(parseInt(g('pe-card-amt-'+idx)||0)||0):0,
-    payment_cash:getPePayMethod(idx)==='cash'?final:getPePayMethod(idx)==='mixed'?(parseInt(g('pe-cash-amt-'+idx)||0)||0):0,
+    payment_card:parseInt(g('pe-card-amt-'+idx)||0)||0,
+    payment_cash:parseInt(g('pe-cash-amt-'+idx)||0)||0,
+    payment_onnuri:parseInt(g('pe-onnuri-amt-'+idx)||0)||0,
+    deposit_paid:parseInt(g('pe-deposit-paid-'+idx)||0)||0,
+    deposit_remaining:(()=>{
+      const dp=parseInt(g('pe-deposit-paid-'+idx)||0)||0;
+      return dp>0?Math.max(0,final-dp):0;
+    })(),
   };
   const {error}=await sb.from('purchases').update(updates).eq('id',cu.purchases[idx].id);
   if(error){alert('저장 실패: '+error.message);return;}
@@ -2138,10 +2203,12 @@ async function savePurchaseEdit(idx){
   await updateVisitCount(cu);renderPurchaseTab(cu);
 }
 
-function showReturnForm(idx, purchaseId){
+async function showReturnForm(idx, purchaseId){
   const area=document.getElementById('purchase-return-area-'+idx);
   if(!area)return;
   if(area.innerHTML){area.innerHTML='';return;}
+  // products가 로드되지 않은 경우 먼저 로드
+  if(!products||!products.length) await loadProducts();
   const today=new Date().toISOString().split('T')[0];
   const cu=currentCustomer;
   const p=cu.purchases[idx];
@@ -2272,21 +2339,16 @@ function showReturnForm(idx, purchaseId){
 
     <!-- 차액 결제 수단 (교환 시) -->
     <div id="exchange-pay-row-${idx}" style="display:none;margin-bottom:12px;">
-      <div style="font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;">차액 결제 수단</div>
-      <div class="pay-toggle" id="ret-pay-toggle-${idx}">
-        <button class="pay-btn active" onclick="setRetPayMethod(${idx},'card')">카드</button>
-        <button class="pay-btn" onclick="setRetPayMethod(${idx},'cash')">현금</button>
-        <button class="pay-btn" onclick="setRetPayMethod(${idx},'mixed')">카드+현금</button>
-        <button class="pay-btn" onclick="setRetPayMethod(${idx},'refund')">환급</button>
+      <div style="font-size:12px;font-weight:500;color:var(--text-secondary);margin-bottom:8px;">차액 결제 수단 <span id="ret-refund-label-${idx}" style="display:none;color:#c41c00;font-size:11px;">(환급)</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px;">
+        <div><div class="form-label">카드 (원)</div>
+          <input class="form-input" type="number" placeholder="0" id="ret-card-amt-${idx}" oninput="calcRetPayCheck(${idx})" min="0"></div>
+        <div><div class="form-label">현금 (원)</div>
+          <input class="form-input" type="number" placeholder="0" id="ret-cash-amt-${idx}" oninput="calcRetPayCheck(${idx})" min="0"></div>
+        <div><div class="form-label">온누리 (원)</div>
+          <input class="form-input" type="number" placeholder="0" id="ret-onnuri-amt-${idx}" oninput="calcRetPayCheck(${idx})" min="0"></div>
       </div>
-      <div id="ret-pay-mixed-${idx}" style="display:none;margin-top:8px;">
-        <div class="form-grid" style="gap:8px;">
-          <div><div class="form-label">카드 (원)</div>
-            <input class="form-input" type="number" placeholder="0" id="ret-card-amt-${idx}"></div>
-          <div><div class="form-label">현금 (원)</div>
-            <input class="form-input" type="number" placeholder="0" id="ret-cash-amt-${idx}"></div>
-        </div>
-      </div>
+      <div id="ret-pay-check-${idx}" style="font-size:11px;min-height:16px;margin-bottom:4px;"></div>
     </div>
 
     <!-- 날짜 / 사유 -->
@@ -2430,14 +2492,23 @@ function getEtoItems(idx){
   return items;
 }
 function setRetPayMethod(idx,method){
+  // 하위호환용 — 환급 표시만 처리
+  const refundLabel=document.getElementById('ret-refund-label-'+idx);
+  if(refundLabel)refundLabel.style.display=method==='refund'?'inline':'none';
+}
+function calcRetPayCheck(idx){
+  const c=parseInt(document.getElementById('ret-card-amt-'+idx)?.value||0)||0;
+  const h=parseInt(document.getElementById('ret-cash-amt-'+idx)?.value||0)||0;
+  const o=parseInt(document.getElementById('ret-onnuri-amt-'+idx)?.value||0)||0;
   const area=document.getElementById('purchase-return-area-'+idx);
-  if(area)area._retPayMethod=method;
-  const toggle=document.getElementById('ret-pay-toggle-'+idx);
-  if(toggle)toggle.querySelectorAll('.pay-btn').forEach((btn,i)=>{
-    btn.classList.toggle('active',['card','cash','mixed','refund'][i]===method);
-  });
-  const mixedRow=document.getElementById('ret-pay-mixed-'+idx);
-  if(mixedRow)mixedRow.style.display=method==='mixed'?'block':'none';
+  const diff=area?Math.abs(area._exchangeDiff||0):0;
+  const sum=c+h+o;
+  const checkEl=document.getElementById('ret-pay-check-'+idx);
+  if(!checkEl)return;
+  if(sum===0){checkEl.textContent='';return;}
+  if(diff>0&&sum===diff){checkEl.style.color='#2d5a1b';checkEl.textContent='✓ 합계 ₩'+formatPrice(sum)+' — 차액과 일치';}
+  else if(diff>0){checkEl.style.color='#FF2400';checkEl.textContent='⚠ 합계 ₩'+formatPrice(sum)+' — 차액(₩'+formatPrice(diff)+')과 차이 '+formatPrice(Math.abs(diff-sum))+'원';}
+  else{checkEl.style.color='#555';checkEl.textContent='합계 ₩'+formatPrice(sum);}
 }
 function setReturnType(idx, type){
   const area=document.getElementById('purchase-return-area-'+idx);
@@ -2545,7 +2616,7 @@ function updateReturnTotal(idx){
   // 차액 결제수단 행
   const payRow=document.getElementById('exchange-pay-row-'+idx);
   if(payRow)payRow.style.display=diff!==0?'block':'none';
-  if(!area._retPayMethod||diff<0)setRetPayMethod(idx,diff<0?'refund':'card');
+  setRetPayMethod(idx,diff<0?'refund':'card');
   // 차액 저장
   if(area)area._exchangeDiff=diff;
 }
@@ -2639,10 +2710,12 @@ async function saveReturn(idx, purchaseId){
   const toAmt=etoItems.reduce((s,it)=>s+it.price,0);
   const toItemNames=etoItems.map(it=>it.name).filter(Boolean).join(' / ')||null;
   const exchangeDiff=type==='exchange'?toAmt-fromAmt:0;
-  // 결제 수단
-  const retPayMethod=area?area._retPayMethod:'card';
+  // 결제 수단 (새 구조: 각 수단별 금액)
   const retCardAmt=parseInt(document.getElementById('ret-card-amt-'+idx)?.value||0)||0;
   const retCashAmt=parseInt(document.getElementById('ret-cash-amt-'+idx)?.value||0)||0;
+  const retOnnuriAmt=parseInt(document.getElementById('ret-onnuri-amt-'+idx)?.value||0)||0;
+  const retPayCnt=[retCardAmt>0,retCashAmt>0,retOnnuriAmt>0].filter(Boolean).length;
+  const retPayMethod=retPayCnt>1?'mixed':retCashAmt>0?'cash':retOnnuriAmt>0?'onnuri':'card';
   const {error}=await sb.from('returns').insert({
     purchase_id:purchaseId,
     customer_id:cu.id,
@@ -2755,9 +2828,10 @@ async function saveReturn(idx, purchaseId){
       price:String(finalAmt),
       final_price:finalAmt,
       cost_total:costTotal||0,
-      payment_method:finalAmt<=0?'none':(retPayMethod==='mixed'?'mixed':retPayMethod),
-      payment_card:retPayMethod==='card'?finalAmt:retPayMethod==='mixed'?retCardAmt:0,
-      payment_cash:retPayMethod==='cash'?finalAmt:retPayMethod==='mixed'?retCashAmt:0,
+      payment_method:finalAmt<=0?'none':retPayMethod,
+      payment_card:retCardAmt>0?retCardAmt:(retPayMethod==='card'?finalAmt:0),
+      payment_cash:retCashAmt>0?retCashAmt:(retPayMethod==='cash'?finalAmt:0),
+      payment_onnuri:retOnnuriAmt||0,
       memo:'[교환] '+(fromItem?fromItem+' → ':'')+( toItemNames||'')+(reason?' / '+reason:''),
     };
     await sb.from('purchases').insert(newPurchase);
@@ -4144,13 +4218,20 @@ function calcPaySummary(list){
   let card=0,cash=0,mixed=0,onnuri=0;
   list.forEach(p=>{
     const amt=parsePrice(p.final_price||p.price);
-    if(p.payment_method==='cash') cash+=amt;
-    else if(p.payment_method==='onnuri') onnuri+=amt;
-    else if(p.payment_method==='mixed'){
-      card+=parsePrice(p.payment_card||0);
-      cash+=parsePrice(p.payment_cash||0);
-      mixed+=amt;
-    } else card+=amt;
+    const pc=parsePrice(p.payment_card||0);
+    const ph=parsePrice(p.payment_cash||0);
+    const po=parsePrice(p.payment_onnuri||0);
+    // 새 방식: 개별 컬럼에 금액이 있으면 그걸로 집계
+    if(pc>0||ph>0||po>0){
+      card+=pc; cash+=ph; onnuri+=po;
+      if([pc>0,ph>0,po>0].filter(Boolean).length>1) mixed+=amt;
+    } else {
+      // 레거시 방식 fallback
+      if(p.payment_method==='cash') cash+=amt;
+      else if(p.payment_method==='onnuri') onnuri+=amt;
+      else if(p.payment_method==='mixed'){card+=pc;cash+=ph;}
+      else card+=amt;
+    }
   });
   return {card,cash,mixed,onnuri};
 }
@@ -4162,21 +4243,27 @@ function payBadge(card,cash,onnuri){
   return badges.length?`<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">${badges.join('')}</div>`:'';
 }
 function renderMonthly(purchases){
-  const map={},cardMap={},cashMap={};
+  const map={},cardMap={},cashMap={},onnuriMap={};
   purchases.forEach(p=>{
     if(!p.date)return;
     const k=p.date.slice(0,7);
     map[k]=(map[k]||0)+parsePrice(p.final_price||p.price);
-    if(p.payment_method==='cash') cashMap[k]=(cashMap[k]||0)+parsePrice(p.final_price||p.price);
-    else if(p.payment_method==='mixed'){cardMap[k]=(cardMap[k]||0)+parsePrice(p.payment_card||0);cashMap[k]=(cashMap[k]||0)+parsePrice(p.payment_cash||0);}
-    else cardMap[k]=(cardMap[k]||0)+parsePrice(p.final_price||p.price);
+    const pc=parsePrice(p.payment_card||0),ph=parsePrice(p.payment_cash||0),po=parsePrice(p.payment_onnuri||0);
+    if(pc>0||ph>0||po>0){
+      cardMap[k]=(cardMap[k]||0)+pc; cashMap[k]=(cashMap[k]||0)+ph; onnuriMap[k]=(onnuriMap[k]||0)+po;
+    } else {
+      if(p.payment_method==='cash') cashMap[k]=(cashMap[k]||0)+parsePrice(p.final_price||p.price);
+      else if(p.payment_method==='onnuri') onnuriMap[k]=(onnuriMap[k]||0)+parsePrice(p.final_price||p.price);
+      else if(p.payment_method==='mixed'){cardMap[k]=(cardMap[k]||0)+pc;cashMap[k]=(cashMap[k]||0)+ph;}
+      else cardMap[k]=(cardMap[k]||0)+parsePrice(p.final_price||p.price);
+    }
   });
   const months=Object.keys(map).sort().reverse();
   const thisMonth=new Date().toISOString().slice(0,7);
   const thisPay=calcPaySummary(purchases.filter(p=>(p.date||'').startsWith(thisMonth)));
-  return `<div class="stats-summary"><div class="stats-label">이번 달 매출</div><div class="stats-amount">₩${formatPrice(map[thisMonth]||0)}</div>${payBadge(thisPay.card,thisPay.cash)}</div>
+  return `<div class="stats-summary"><div class="stats-label">이번 달 매출</div><div class="stats-amount">₩${formatPrice(map[thisMonth]||0)}</div>${payBadge(thisPay.card,thisPay.cash,thisPay.onnuri)}</div>
   <div style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;"><canvas id="statsChart" height="180"></canvas></div>
-  <div class="card">${months.length?months.map(m=>`<div class="stats-row" style="flex-direction:column;align-items:flex-start;gap:4px;"><div style="display:flex;justify-content:space-between;width:100%;"><span style="font-size:13px;color:var(--text-secondary);">${m}</span><span style="font-size:13px;font-weight:500;">₩${formatPrice(map[m])}</span></div><div style="display:flex;gap:6px;"><span style="font-size:11px;color:#3730a3;">카드 ₩${formatPrice(cardMap[m]||0)}</span><span style="font-size:11px;color:#2d5a1b;">현금 ₩${formatPrice(cashMap[m]||0)}</span></div></div>`).join(''):'<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">구매 내역이 없습니다.</div>'}</div>`;
+  <div class="card">${months.length?months.map(m=>`<div class="stats-row" style="flex-direction:column;align-items:flex-start;gap:4px;"><div style="display:flex;justify-content:space-between;width:100%;"><span style="font-size:13px;color:var(--text-secondary);">${m}</span><span style="font-size:13px;font-weight:500;">₩${formatPrice(map[m])}</span></div><div style="display:flex;gap:6px;flex-wrap:wrap;">${cardMap[m]>0?`<span style="font-size:11px;color:#3730a3;">카드 ₩${formatPrice(cardMap[m]||0)}</span>`:''} ${cashMap[m]>0?`<span style="font-size:11px;color:#2d5a1b;">현금 ₩${formatPrice(cashMap[m]||0)}</span>`:''} ${onnuriMap[m]>0?`<span style="font-size:11px;color:#7a4800;">온누리 ₩${formatPrice(onnuriMap[m]||0)}</span>`:''}</div></div>`).join(''):'<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">구매 내역이 없습니다.</div>'}</div>`;
 }
 function drawMonthlyChart(purchases){
   const el=document.getElementById('statsChart');if(!el)return;
@@ -4231,21 +4318,27 @@ function drawDailyChart(purchases){
 }
 
 function renderYearly(purchases){
-  const map={},cardMap={},cashMap={};
+  const map={},cardMap={},cashMap={},onnuriMap={};
   purchases.forEach(p=>{
     if(!p.date)return;
     const k=p.date.slice(0,4);
     map[k]=(map[k]||0)+parsePrice(p.final_price||p.price);
-    if(p.payment_method==='cash') cashMap[k]=(cashMap[k]||0)+parsePrice(p.final_price||p.price);
-    else if(p.payment_method==='mixed'){cardMap[k]=(cardMap[k]||0)+parsePrice(p.payment_card||0);cashMap[k]=(cashMap[k]||0)+parsePrice(p.payment_cash||0);}
-    else cardMap[k]=(cardMap[k]||0)+parsePrice(p.final_price||p.price);
+    const pc=parsePrice(p.payment_card||0),ph=parsePrice(p.payment_cash||0),po=parsePrice(p.payment_onnuri||0);
+    if(pc>0||ph>0||po>0){
+      cardMap[k]=(cardMap[k]||0)+pc; cashMap[k]=(cashMap[k]||0)+ph; onnuriMap[k]=(onnuriMap[k]||0)+po;
+    } else {
+      if(p.payment_method==='cash') cashMap[k]=(cashMap[k]||0)+parsePrice(p.final_price||p.price);
+      else if(p.payment_method==='onnuri') onnuriMap[k]=(onnuriMap[k]||0)+parsePrice(p.final_price||p.price);
+      else if(p.payment_method==='mixed'){cardMap[k]=(cardMap[k]||0)+pc;cashMap[k]=(cashMap[k]||0)+ph;}
+      else cardMap[k]=(cardMap[k]||0)+parsePrice(p.final_price||p.price);
+    }
   });
   const years=Object.keys(map).sort().reverse();
   const thisYear=String(new Date().getFullYear());
   const thisPay=calcPaySummary(purchases.filter(p=>(p.date||'').startsWith(thisYear)));
-  return `<div class="stats-summary"><div class="stats-label">${thisYear}년 연간 매출</div><div class="stats-amount">₩${formatPrice(map[thisYear]||0)}</div>${payBadge(thisPay.card,thisPay.cash)}</div>
+  return `<div class="stats-summary"><div class="stats-label">${thisYear}년 연간 매출</div><div class="stats-amount">₩${formatPrice(map[thisYear]||0)}</div>${payBadge(thisPay.card,thisPay.cash,thisPay.onnuri)}</div>
   <div style="background:#fff;border:0.5px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;"><canvas id="statsChart" height="180"></canvas></div>
-  <div class="card">${years.length?years.map(y=>`<div class="stats-row" style="flex-direction:column;align-items:flex-start;gap:4px;"><div style="display:flex;justify-content:space-between;width:100%;"><span style="font-size:13px;color:var(--text-secondary);">${y}년</span><span style="font-size:13px;font-weight:500;">₩${formatPrice(map[y])}</span></div><div style="display:flex;gap:6px;"><span style="font-size:11px;color:#3730a3;">카드 ₩${formatPrice(cardMap[y]||0)}</span><span style="font-size:11px;color:#2d5a1b;">현금 ₩${formatPrice(cashMap[y]||0)}</span></div></div>`).join(''):'<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">구매 내역이 없습니다.</div>'}</div>`;
+  <div class="card">${years.length?years.map(y=>`<div class="stats-row" style="flex-direction:column;align-items:flex-start;gap:4px;"><div style="display:flex;justify-content:space-between;width:100%;"><span style="font-size:13px;color:var(--text-secondary);">${y}년</span><span style="font-size:13px;font-weight:500;">₩${formatPrice(map[y])}</span></div><div style="display:flex;gap:6px;"><span style="font-size:11px;color:#3730a3;">카드 ₩${formatPrice(cardMap[y]||0)}</span><span style="font-size:11px;color:#2d5a1b;">현금 ₩${formatPrice(cashMap[y]||0)}</span>${onnuriMap[y]?`<span style="font-size:11px;color:#7a4800;">온누리 ₩${formatPrice(onnuriMap[y])}</span>`:''}</div></div>`).join(''):'<div style="font-size:13px;color:var(--text-hint);padding:8px 0;text-align:center;">구매 내역이 없습니다.</div>'}</div>`;
 }
 function drawYearlyChart(purchases){
   const el=document.getElementById('statsChart');if(!el)return;
