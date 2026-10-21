@@ -909,8 +909,9 @@ async function saveInfoEdit(){
 }
 async function deleteCustomer(){
   const cu=currentCustomer;
-  if(!confirm('"'+cu.name+'" 고객을 삭제할까요?\n검안기록과 구매내역도 모두 삭제됩니다.'))return;
+  if(!confirm('"'+cu.name+'" 고객을 삭제할까요?\n검안기록, 구매내역, 환불/교환 기록도 모두 삭제됩니다.'))return;
   await sb.from('exams').delete().eq('customer_id',cu.id);
+  await sb.from('returns').delete().eq('customer_id',cu.id);
   await sb.from('purchases').delete().eq('customer_id',cu.id);
   const {error}=await sb.from('customers').delete().eq('id',cu.id);
   if(error){alert('삭제 실패: '+error.message);return;}
@@ -3056,9 +3057,45 @@ async function loadReturnsForPurchases(cu){
 }
 
 async function deletePurchase(idx){
-  if(!confirm('이 구매내역을 삭제할까요?'))return;
   const cu=currentCustomer;
-  const {error}=await sb.from('purchases').delete().eq('id',cu.purchases[idx].id);
+  const purchase=cu.purchases[idx];
+  const purchaseId=purchase.id;
+
+  // 연결된 환불/교환 기록 확인
+  const {data:linkedReturns}=await sb.from('returns').select('id,type').eq('purchase_id',purchaseId);
+  const hasLinked=linkedReturns&&linkedReturns.length>0;
+
+  const confirmMsg=hasLinked
+    ?`이 구매내역을 삭제할까요?\n\n⚠️ 연결된 환불/교환 기록 ${linkedReturns.length}건과\n자동 생성된 마이너스 구매내역도 함께 삭제됩니다.`
+    :'이 구매내역을 삭제할까요?';
+  if(!confirm(confirmMsg))return;
+
+  // 1. 연결된 환불/교환이 있으면 관련 자동생성 구매내역 먼저 삭제
+  if(hasLinked){
+    // [환불], [교환] 메모로 자동생성된 마이너스/교환 구매내역 찾아서 삭제
+    const {data:autoPurchases}=await sb.from('purchases')
+      .select('id,memo')
+      .eq('customer_id',cu.id);
+    if(autoPurchases){
+      const origItems=[purchase.item, purchase.item_b, purchase.lens_item, purchase.lens_item_b].filter(Boolean);
+      const toDelete=autoPurchases.filter(r=>{
+        const memo=r.memo||'';
+        return r.id!==purchaseId&&(
+          memo.startsWith('[환불]')||memo.startsWith('[교환]')||memo.startsWith('[교환반납]')
+        )&&(origItems.length===0||origItems.some(name=>memo.includes(name)));
+      });
+      for(const row of toDelete){
+        await sb.from('purchases').delete().eq('id',row.id);
+      }
+    }
+    // 2. returns 행 삭제
+    for(const ret of linkedReturns){
+      await sb.from('returns').delete().eq('id',ret.id);
+    }
+  }
+
+  // 3. 원거래 삭제
+  const {error}=await sb.from('purchases').delete().eq('id',purchaseId);
   if(error){alert('삭제 실패: '+error.message);return;}
   cu.purchases.splice(idx,1);await updateVisitCount(cu);renderPurchaseTab(cu);
 }
