@@ -1425,15 +1425,15 @@ async function showPurchaseForm(forceOpen){
           <input class="form-input" type="number" placeholder="0" id="p-pay-onnuri-amt" oninput="calcPayTotal()" min="0"></div>
       </div>
       <div style="font-size:11px;color:var(--text-hint);margin-bottom:2px;" id="p-pay-check"></div>
-      <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:12px 0 8px;">선금 / 잔액</div>
+      <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:12px 0 8px;">선금 / 미수금</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px;">
         <div><div class="form-label">선금 납입액 (원)</div>
           <input class="form-input" type="number" placeholder="0" id="p-deposit-paid" oninput="calcDepositRemaining()" min="0"></div>
-        <div><div class="form-label">잔액</div>
-          <div class="form-input" id="p-deposit-remaining" style="background:#F5F5F5;color:var(--text-secondary);display:flex;align-items:center;">—</div>
+        <div><div class="form-label">미수금 (원)</div>
+          <input class="form-input" type="number" placeholder="0" id="p-deposit-remaining" min="0" oninput="onDepositRemainingInput()">
         </div>
       </div>
-      <div style="font-size:11px;color:var(--text-hint);margin-bottom:12px;">※ 선금이 없으면 비워두세요.</div>
+      <div style="font-size:11px;color:var(--text-hint);margin-bottom:12px;" id="p-deposit-check"></div>
       <button class="action-btn primary" onclick="savePurchase()" style="margin-top:4px;">저장</button>
     </div>`;
 }
@@ -1644,15 +1644,34 @@ function calcPayTotal(){
 }
 function calcMixedTotal(){calcPayTotal();} // 하위호환
 function calcDepositRemaining(){
+  // 선금 입력 시 미수금 자동계산
   const finalEl=document.getElementById('p-final');
   const finalAmt=finalEl?parsePrice(finalEl.textContent):0;
   const depositPaid=parseInt(document.getElementById('p-deposit-paid')?.value||0)||0;
   const remainEl=document.getElementById('p-deposit-remaining');
+  const checkEl=document.getElementById('p-deposit-check');
   if(!remainEl)return;
-  if(!depositPaid){remainEl.textContent='—';remainEl.style.color='var(--text-secondary)';return;}
-  const remaining=finalAmt-depositPaid;
-  if(remaining<=0){remainEl.textContent='완납';remainEl.style.color='#2d5a1b';}
-  else{remainEl.textContent='잔액 ₩'+formatPrice(remaining);remainEl.style.color='#c41c00';}
+  if(!depositPaid){
+    // 선금 없으면 미수금 칸 비움 (직접 입력 가능하도록)
+    remainEl.value='';
+    if(checkEl)checkEl.textContent='';
+    return;
+  }
+  const remaining=Math.max(0,finalAmt-depositPaid);
+  remainEl.value=remaining>0?remaining:'';
+  if(checkEl){
+    if(remaining<=0){checkEl.style.color='#2d5a1b';checkEl.textContent='✓ 완납';}
+    else{checkEl.style.color='#c41c00';checkEl.textContent='미수금 ₩'+formatPrice(remaining);}
+  }
+}
+function onDepositRemainingInput(){
+  // 미수금 직접 입력 시 안내 표시
+  const remainEl=document.getElementById('p-deposit-remaining');
+  const checkEl=document.getElementById('p-deposit-check');
+  if(!checkEl||!remainEl)return;
+  const val=parseInt(remainEl.value||0)||0;
+  if(val>0){checkEl.style.color='#c41c00';checkEl.textContent='미수금 ₩'+formatPrice(val);}
+  else{checkEl.style.color='#2d5a1b';checkEl.textContent=val===0&&remainEl.value!==''?'✓ 완납':'';}
 }
 
 function getFrameItems(){
@@ -1858,7 +1877,9 @@ async function savePurchase(){
     deposit_paid:parseInt(g('p-deposit-paid')||0)||0,
     deposit_remaining:(()=>{
       const dp=parseInt(g('p-deposit-paid')||0)||0;
-      return dp>0?Math.max(0,finalPrice-dp):0;
+      const dr=parseInt(document.getElementById('p-deposit-remaining')?.value||0)||0;
+      if(dp>0) return Math.max(0,finalPrice-dp); // 선금 있으면 자동계산
+      return dr; // 선금 없으면 직접 입력값 사용
     })(),
     lens:g('p-lens-rx'),
     memo:memo
@@ -1981,14 +2002,15 @@ async function showPurchaseEditForm(idx){
           <input class="form-input" type="number" value="${p.payment_onnuri||0}" id="pe-onnuri-amt-${idx}" oninput="calcPePayTotal(${idx})" min="0"></div>
       </div>
       <div style="font-size:11px;color:var(--text-hint);margin-bottom:8px;" id="pe-pay-check-${idx}"></div>
-      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">선금 / 잔액</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+      <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">선금 / 미수금</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px;">
         <div><div class="form-label">선금 납입액 (원)</div>
           <input class="form-input" type="number" value="${p.deposit_paid||0}" id="pe-deposit-paid-${idx}" oninput="calcPeDepositRemaining(${idx})" min="0"></div>
-        <div><div class="form-label">잔액</div>
-          <div class="form-input" id="pe-deposit-remaining-${idx}" style="background:#F5F5F5;color:var(--text-secondary);display:flex;align-items:center;">${(p.deposit_remaining||0)>0?'잔액 ₩'+formatPrice(p.deposit_remaining):(p.deposit_paid||0)>0?'완납':'—'}</div>
+        <div><div class="form-label">미수금 (원)</div>
+          <input class="form-input" type="number" value="${p.deposit_remaining||''}" id="pe-deposit-remaining-${idx}" min="0" oninput="onPeDepositRemainingInput(${idx})">
         </div>
       </div>
+      <div style="font-size:11px;min-height:16px;margin-bottom:8px;" id="pe-deposit-check-${idx}">${(p.deposit_remaining||0)>0?'<span style=color:#c41c00>미수금 ₩'+formatPrice(p.deposit_remaining)+'</span>':(p.deposit_paid||0)>0?'<span style=color:#2d5a1b>✓ 완납</span>':''}</div>
       <div class="form-row"><div class="form-label">비고</div><textarea class="form-input" id="pe-memo-${idx}" rows="2" style="resize:vertical;line-height:1.6;" placeholder="고객 특성, 선호도, 특이사항...">${p.memo||''}</textarea></div>
       <div style="font-size:13px;font-weight:600;color:#1a1a1a;margin:14px 0 6px;padding-bottom:6px;border-bottom:0.5px solid #EBEBEB;">처방 도수</div>
       <div style="display:grid;grid-template-columns:40px 1fr 1fr 1fr 1fr 1fr;gap:6px;margin-bottom:4px;align-items:center;">
@@ -2059,11 +2081,23 @@ function calcPeDepositRemaining(idx){
   const finalAmt=finalEl?parsePrice(finalEl.textContent):0;
   const dp=parseInt(document.getElementById('pe-deposit-paid-'+idx)?.value||0)||0;
   const remEl=document.getElementById('pe-deposit-remaining-'+idx);
+  const checkEl=document.getElementById('pe-deposit-check-'+idx);
   if(!remEl)return;
-  if(!dp){remEl.textContent='—';remEl.style.color='var(--text-secondary)';return;}
+  if(!dp){remEl.value='';if(checkEl)checkEl.innerHTML='';return;}
   const rem=finalAmt>0?Math.max(0,finalAmt-dp):0;
-  if(rem<=0){remEl.textContent='완납';remEl.style.color='#2d5a1b';}
-  else{remEl.textContent='잔액 ₩'+formatPrice(rem);remEl.style.color='#c41c00';}
+  remEl.value=rem>0?rem:'';
+  if(checkEl){
+    if(rem<=0){checkEl.innerHTML='<span style="color:#2d5a1b">✓ 완납</span>';}
+    else{checkEl.innerHTML='<span style="color:#c41c00">미수금 ₩'+formatPrice(rem)+'</span>';}
+  }
+}
+function onPeDepositRemainingInput(idx){
+  const remEl=document.getElementById('pe-deposit-remaining-'+idx);
+  const checkEl=document.getElementById('pe-deposit-check-'+idx);
+  if(!checkEl||!remEl)return;
+  const val=parseInt(remEl.value||0)||0;
+  if(val>0){checkEl.innerHTML='<span style="color:#c41c00">미수금 ₩'+formatPrice(val)+'</span>';}
+  else{checkEl.innerHTML=remEl.value!==''?'<span style="color:#2d5a1b">✓ 완납</span>':'';}
 }
 // ── 수정폼 상품 아이템 HTML ──
 let _editItemCount={};
@@ -2252,7 +2286,9 @@ async function savePurchaseEdit(idx){
     deposit_paid:parseInt(g('pe-deposit-paid-'+idx)||0)||0,
     deposit_remaining:(()=>{
       const dp=parseInt(g('pe-deposit-paid-'+idx)||0)||0;
-      return dp>0?Math.max(0,final-dp):0;
+      const dr=parseInt(document.getElementById('pe-deposit-remaining-'+idx)?.value||0)||0;
+      if(dp>0) return Math.max(0,final-dp); // 선금 있으면 자동계산
+      return dr; // 선금 없으면 직접 입력값 사용
     })(),
   };
   const {error}=await sb.from('purchases').update(updates).eq('id',cu.purchases[idx].id);
